@@ -1,0 +1,28 @@
+# Gradle / Android build output
+.gradle/
+build/
+*/build/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Toolchain / SDK installed into the project tree by provisioning scripts
+.tooling/
+.android-sdk/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Agent scratch space and generated probe output
+.freebuff/
+**/capability-report*.json
