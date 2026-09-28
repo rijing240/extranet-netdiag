@@ -31,7 +31,9 @@ class WaterfallTest {
         assertEquals(2, rows.getValue(Layer.DNS).observed)
         assertEquals(10L, rows.getValue(Layer.DNS).stats?.minMillis)
         assertEquals(20L, rows.getValue(Layer.DNS).stats?.maxMillis)
-        assertEquals(15L, rows.getValue(Layer.DNS).stats?.p50Millis, "nearest rank: the lower of two")
+        // Nearest rank: p50 of two samples is the lower one, not their mean. The mean of two
+        // observed latencies is a latency nobody observed.
+        assertEquals(10L, rows.getValue(Layer.DNS).stats?.p50Millis)
         assertEquals(80L, rows.getValue(Layer.TTFB).stats?.maxMillis)
     }
 

@@ -107,7 +107,9 @@ public class AndroidOsDiagnostics(context: Context) : OsDiagnosticsSource {
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .build()
 
-            diagnostics.registerConnectivityDiagnosticsCallback(callback, executor, request)
+            // Argument order is (request, executor, callback) - worth stating, because the
+            // register/unregister pair reads the other way round.
+            diagnostics.registerConnectivityDiagnosticsCallback(request, executor, callback)
             latch.await(waitMillis, TimeUnit.MILLISECONDS)
 
             val report = capturedReport
@@ -159,7 +161,7 @@ public class AndroidOsDiagnostics(context: Context) : OsDiagnosticsSource {
             additionalInfo = info?.asText() ?: emptyMap(),
             dataStall = stall?.let { stallReport ->
                 OsDiagnostics.DataStall(
-                    timestampMillis = stallReport.timestampMillis,
+                    timestampMillis = stallReport.reportTimestamp,
                     detectionMethod = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         stallReport.detectionMethod
                     } else {

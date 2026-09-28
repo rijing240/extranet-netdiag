@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.measure.LayerStats
+import dev.extranet.netdiag.measure.OsDiagnostics
 import dev.extranet.netdiag.measure.ProbeRun
 
 /**
@@ -173,20 +174,21 @@ private fun verdictLine(run: ProbeRun): String {
 private fun FailureModeSection(state: MeasurementUiState.Done) {
     val run = state.run
     Text("failure modes", style = MaterialTheme.typography.titleSmall)
-    if (run.failureModes.isEmpty()) {
+    val modes = run.failureModes
+    if (modes.isEmpty()) {
         Text(
             "none: every attempted stage succeeded",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        return
-    }
-    for (mode in run.failureModes) {
-        Text(
-            "${mode.count} x ${mode.layer.wireName}: ${mode.detail}",
-            style = MaterialTheme.typography.bodySmall,
-            fontFamily = FontFamily.Monospace,
-        )
+    } else {
+        for (mode in modes) {
+            Text(
+                "${mode.count} x ${mode.layer.wireName}: ${mode.detail}",
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = FontFamily.Monospace,
+            )
+        }
     }
 }
 
@@ -208,9 +210,25 @@ private fun PlatformSection(state: MeasurementUiState.Done) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        return
+    } else {
+        PlatformFacts(run, diagnostics, state)
     }
 
+    Spacer(Modifier.height(8.dp))
+    Text(
+        "raw coordinates and cell identities are never included in this report",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** The platform's numbers, one per line. */
+@Composable
+private fun PlatformFacts(
+    run: ProbeRun,
+    diagnostics: OsDiagnostics,
+    state: MeasurementUiState.Done,
+) {
     val lines = listOfNotNull(
         "interface ${diagnostics.interfaceName ?: "unknown"} mtu ${diagnostics.mtu ?: "?"}",
         "transports ${diagnostics.transports.joinToString(", ").ifEmpty { "none reported" }}",
@@ -244,10 +262,4 @@ private fun PlatformSection(state: MeasurementUiState.Done) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
-    Spacer(Modifier.height(8.dp))
-    Text(
-        "raw coordinates and cell identities are never included in this report",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
