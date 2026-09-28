@@ -169,11 +169,23 @@ jobs:
           # The retrieval must happen here rather than in a later step: the action stops the
           # emulator when this step ends, so a later `adb` has nothing to talk to, which is how
           # this job first came to upload an artifact with no report in it.
+          #
+          # The test run is driven by hand rather than through :app:connectedDebugAndroidTest,
+          # because that task uninstalls the app when it finishes and the app's storage goes with
+          # it - including the report this job exists to produce. Installing, instrumenting and
+          # retrieving are therefore separate steps, and the report is read while the app is
+          # still on the device.
           script: |
             adb logcat -c
-            gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
+            gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+            adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+            adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w dev.extranet.netdiag.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            grep -q "OK (" instrumentation.txt
             bash tools/pull-device-report.sh
+            adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
+            adb uninstall dev.extranet.netdiag
+            adb uninstall dev.extranet.netdiag.test
 
       # The report is the evidence, so a few counts are printed into the log where a reader of
       # the run can see them without downloading anything.
@@ -210,6 +222,6 @@ jobs:
           path: |
             capability-report.json
             emulator-probe.log
-            app/build/reports/androidTests/**
+            instrumentation.txt
             app/build/outputs/androidTest-results/**
           if-no-files-found: warn

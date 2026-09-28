@@ -49,6 +49,22 @@ adb exec-out run-as dev.extranet.netdiag cat files/capability-report.json > capa
 adb pull /sdcard/Android/data/dev.extranet.netdiag/files/capability-report.json
 ```
 
+`tools/pull-device-report.sh` does this with both paths and checks that what came back actually
+parses as the report, which is worth having: a failed `run-as` writes its complaint into the
+output file, so a size check alone will happily accept 46 bytes of error message as the
+artifact.
+
+**A trap worth knowing about.** `gradle :app:connectedDebugAndroidTest` uninstalls the app when
+it finishes, and the app's storage goes with it — so the report is destroyed before any later
+`adb` command can read it. Drive the run by hand when you want the report:
+
+```bash
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am instrument -w dev.extranet.netdiag.test/androidx.test.runner.AndroidJUnitRunner
+bash tools/pull-device-report.sh
+```
+
 **What to look at first**, in the order that matters:
 
 1. `lte.signal.timingAdvance` and `nr.signal.timingAdvance` — whether the modem reports these at
