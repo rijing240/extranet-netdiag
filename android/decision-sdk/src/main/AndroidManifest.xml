@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- S4 Decision SDK. Boundary only in B0: the offline tripwire ships in B10, after the model
+     in B9 has a measured precision/recall curve to sell against. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

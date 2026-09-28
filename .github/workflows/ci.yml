@@ -1,0 +1,227 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "b0-*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The repository deliberately ships without a Gradle wrapper JAR (a binary), so every job
+# provisions Gradle itself and invokes the `gradle` binary. Generate the wrapper locally with
+# `gradle wrapper` if you prefer ./gradlew.
+
+jobs:
+  ledger:
+    name: Calculation ledger (independent re-derivation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Re-derive every ledger constant and compare with the Kotlin source
+        run: python3 tools/verify_ledger.py
+
+  unit-tests:
+    name: Unit tests (pure JVM kernel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Run core and probe unit tests
+        run: gradle :core:test :probe:test --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-reports
+          path: |
+            core/build/reports/tests/**
+            probe/build/reports/tests/**
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-results
+          path: |
+            core/build/test-results/**
+            probe/build/test-results/**
+          if-no-files-found: warn
+
+  android-build:
+    name: Android build and JVM unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The ubuntu-latest image already ships the SDK, but cmdline-tools is not on PATH and the
+      # directory version varies, so sdkmanager is located rather than assumed. Install failures
+      # are tolerated: if the runner already has platform 35 and build-tools 35 the build will
+      # proceed, and the inventory printed below is what to read when it does not.
+      - name: Provision the Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
+          echo "sdkmanager=${SDKMGR:-NOT FOUND}"
+          if [ -n "$SDKMGR" ]; then
+            # No chmod: the SDK is root-owned on hosted runners and already executable.
+            yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+            "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          fi
+          echo "--- installed platforms ---"; ls "$SDK/platforms" 2>/dev/null || true
+          echo "--- installed build-tools ---"; ls "$SDK/build-tools" 2>/dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Assemble debug APK and compile instrumented tests
+        run: |
+          gradle \
+            :android:sensor-core:testDebugUnitTest \
+            :app:assembleDebug \
+            :app:assembleDebugAndroidTest \
+            --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netdiag-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+  probe-on-emulator:
+    name: Capability probe on device (informational)
+    runs-on: ubuntu-latest
+    # An emulator has no radio and no GNSS chipset, so this job proves the harness executes on a
+    # real Android runtime and produces a well-formed report. It is not evidence about hardware
+    # support, which is what the B12 device matrix exists for, so a failure here must not block
+    # a change to the ledger or the probe engine.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # The ubuntu-latest image already ships the SDK, but cmdline-tools is not on PATH and the
+      # directory version varies, so sdkmanager is located rather than assumed. Install failures
+      # are tolerated: if the runner already has platform 35 and build-tools 35 the build will
+      # proceed, and the inventory printed below is what to read when it does not.
+      - name: Provision the Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
+          echo "sdkmanager=${SDKMGR:-NOT FOUND}"
+          if [ -n "$SDKMGR" ]; then
+            # No chmod: the SDK is root-owned on hosted runners and already executable.
+            yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+            "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          fi
+          echo "--- installed platforms ---"; ls "$SDK/platforms" 2>/dev/null || true
+          echo "--- installed build-tools ---"; ls "$SDK/build-tools" 2>/dev/null || true
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the capability probe on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          # Every line below runs in its own shell - the action executes the block line by line,
+          # so no variable set on one line survives to the next and no multi-line construct
+          # survives at all. Keep this to single self-contained commands; the retrieval logic
+          # lives in tools/pull-device-report.sh for that reason.
+          #
+          # The retrieval must happen here rather than in a later step: the action stops the
+          # emulator when this step ends, so a later `adb` has nothing to talk to, which is how
+          # this job first came to upload an artifact with no report in it.
+          #
+          # The test run is driven by hand rather than through :app:connectedDebugAndroidTest,
+          # because that task uninstalls the app when it finishes and the app's storage goes with
+          # it - including the report this job exists to produce. Installing, instrumenting and
+          # retrieving are therefore separate steps, and the report is read while the app is
+          # still on the device.
+          script: |
+            adb logcat -c
+            gradle :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon --stacktrace
+            adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+            adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w dev.extranet.netdiag.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
+            grep -q "OK (" instrumentation.txt
+            bash tools/pull-device-report.sh
+            adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
+            adb uninstall dev.extranet.netdiag
+            adb uninstall dev.extranet.netdiag.test
+
+      # The report is the evidence, so a few counts are printed into the log where a reader of
+      # the run can see them without downloading anything.
+      - name: Summarise the device report
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json, collections, pathlib
+          path = pathlib.Path("capability-report.json")
+          if not path.exists() or path.stat().st_size == 0:
+              print("no report to summarise; the pull step is what reports this")
+              raise SystemExit(0)
+          try:
+              report = json.loads(path.read_text())
+          except json.JSONDecodeError as error:
+              # The instrumented test already asserts the report parses, so reaching here means
+              # the file was truncated in transit rather than that the harness is broken.
+              print(f"report is not valid JSON: {error}")
+              raise SystemExit(0)
+          device = report["device"]
+          print("device:", device.get("manufacturer"), device.get("model"), "API", device.get("sdkInt"))
+          counts = collections.Counter(f["status"] for f in report["findings"])
+          for status, n in sorted(counts.items()):
+              print(f"  {status:<18} {n}")
+          unreadable = [f["id"] for f in report["findings"] if f["status"] in {"UNAVAILABLE", "THROWS"}]
+          print("not readable on this device:", ", ".join(unreadable) or "none")
+          PY
+
+      - name: Upload the device report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-capability-report
+          path: |
+            capability-report.json
+            emulator-probe.log
+            instrumentation.txt
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: warn
