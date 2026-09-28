@@ -37,7 +37,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a value is supported and carries the rendered observation`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("ta" to ProbeOutcome.Value("16 basic units")),
         )
         val finding = run(source, listOf(spec(id = "ta"))).findings.single()
@@ -48,7 +48,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `an unavailable sentinel is reported as unavailable`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("nr.ta" to ProbeOutcome.Unavailable),
         )
         val finding = run(source, listOf(spec(id = "nr.ta"))).findings.single()
@@ -59,7 +59,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `an exception is reported as throws with the reason preserved`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("bad" to ProbeOutcome.Failed("IllegalStateException: no modem")),
         )
         val finding = run(source, listOf(spec(id = "bad"))).findings.single()
@@ -70,7 +70,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a platform refusal is reported as permission denied`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("p" to ProbeOutcome.Denied),
         )
         assertEquals(
@@ -82,7 +82,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a platform absent result is reported as feature absent`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("f" to ProbeOutcome.Absent),
         )
         assertEquals(
@@ -165,7 +165,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a granted permission spec reports supported without a platform call`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             grantedPermissions = setOf("android.permission.ACCESS_FINE_LOCATION"),
         )
         val finding = run(
@@ -186,7 +186,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a present feature spec reports supported without a platform call`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             availableFeatures = setOf("android.hardware.wifi.rtt"),
         )
         val finding = run(
@@ -263,7 +263,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a platform detail outranks the spec note`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("x" to ProbeOutcome.Failed("real reason")),
         )
         val finding = run(source, listOf(spec(note = "spec note"))).findings.single()
@@ -280,7 +280,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `a failing api does not prevent the rest of the report`() {
         val source = FakePlatformSource(
-            device = FakePlatformSource.descriptor(34),
+            descriptor = FakePlatformSource.descriptor(34),
             outcomes = mapOf("b" to ProbeOutcome.Failed("boom")),
         )
         val report = run(

@@ -138,22 +138,18 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = API_29,
-            note = "553.46 m per step; used only to detect 2G fallback, never for ranging",
+            note = "553.46 m per step, 2G fallback detection only. The getter is not in the " +
+                "public SDK at compileSdk 35, so this is expected to report UNAVAILABLE: " +
+                "the answer is that an app cannot read GSM timing advance at all.",
         ),
         ProbeSpec(
-            id = "wcdma.signal.rscp",
-            api = "android.telephony.CellSignalStrengthWcdma#getRscp",
+            id = "wcdma.signal.dbm",
+            api = "android.telephony.CellSignalStrengthWcdma#getDbm",
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = 17,
-            note = "3G fallback path; a RAT downgrade here is a strong degradation signal",
-        ),
-        ProbeSpec(
-            id = "wcdma.signal.ecno",
-            api = "android.telephony.CellSignalStrengthWcdma#getEcNo",
-            system = SystemId.SENSOR_CORE,
-            kind = ProbeKind.SYNC,
-            requiredApiLevel = 17,
+            note = "3G fallback path; a RAT downgrade here is a strong degradation signal. " +
+                "RSCP and EcNo are not public API, so only the aggregate dBm is available.",
         ),
         ProbeSpec(
             id = "cdma.signal",
@@ -242,6 +238,7 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = API_24,
+            requiredPermission = "android.permission.READ_PHONE_STATE",
             note = "RAT downgrade events are a leading indicator in the drop model",
         ),
         ProbeSpec(
@@ -250,6 +247,7 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = API_26,
+            requiredPermission = "android.permission.READ_PHONE_STATE",
             note = "the label source for NO_SERVICE transitions in B8",
         ),
         ProbeSpec(
@@ -281,6 +279,7 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = 22,
+            requiredPermission = "android.permission.READ_PHONE_STATE",
             note = "dual-SIM means every radio measurement is per-subscription, not per-device",
         ),
     )

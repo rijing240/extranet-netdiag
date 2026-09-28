@@ -13,11 +13,9 @@ import android.os.PowerManager
 import android.telephony.CellIdentityLte
 import android.telephony.CellIdentityNr
 import android.telephony.CellInfo
-import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
-import android.telephony.CellSignalStrengthGsm
 import android.telephony.CellSignalStrengthNr
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -99,17 +97,14 @@ public class AndroidPlatformProbe(
                 intOutcome(it.timingAdvance)
             }
 
-            "gsm.signal.timingAdvance" -> gsm {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return@gsm ProbeOutcome.Unavailable
-                intOutcome(it.timingAdvance)
-            }
+            // CellSignalStrengthGsm exposes no timing-advance getter in the public SDK, so this
+            // is a guaranteed UNAVAILABLE rather than a probe. It stays in the catalog because
+            // the answer "you cannot get GSM timing advance from an app" is itself a finding.
+            "gsm.signal.timingAdvance" -> ProbeOutcome.Unavailable
 
-            "wcdma.signal.rscp" -> cells()
+            "wcdma.signal.dbm" -> cells()
                 .filterIsInstance<CellInfoWcdma>().firstOrNull()
-                ?.let { intOutcome(it.cellSignalStrength.rscp) } ?: ProbeOutcome.Unavailable
-            "wcdma.signal.ecno" -> cells()
-                .filterIsInstance<CellInfoWcdma>().firstOrNull()
-                ?.let { intOutcome(it.cellSignalStrength.ecno) } ?: ProbeOutcome.Unavailable
+                ?.let { intOutcome(it.cellSignalStrength.dbm) } ?: ProbeOutcome.Unavailable
             "cdma.signal" -> cells()
                 .filterIsInstance<android.telephony.CellInfoCdma>().firstOrNull()
                 ?.let { intOutcome(it.cellSignalStrength.cdmaDbm) } ?: ProbeOutcome.Unavailable
@@ -213,7 +208,9 @@ public class AndroidPlatformProbe(
             // --- gnss (synchronous surface only) ----------------------------------------------
             "gnss.capabilities" -> {
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@guarded ProbeOutcome.Unavailable
-                location?.gnssCapabilities?.let { ProbeOutcome.Value(generateGnssCapabilities(it)) }
+                // GnssCapabilities.toString() already enumerates every supported flag, which
+                // avoids depending on individual has*() accessors that vary by API level.
+                location?.gnssCapabilities?.let { ProbeOutcome.Value(it.toString()) }
                     ?: ProbeOutcome.Unavailable
             }
             "gnss.antennaInfo" -> {
@@ -341,22 +338,29 @@ public class AndroidPlatformProbe(
     private fun lteIdentity(block: (CellIdentityLte) -> ProbeOutcome): ProbeOutcome =
         lte { block(it.cellIdentity) }
 
-    private fun gsm(block: (CellSignalStrengthGsm) -> ProbeOutcome): ProbeOutcome =
-        cells().filterIsInstance<CellInfoGsm>().firstOrNull()
-            ?.let { block(it.cellSignalStrength) } ?: ProbeOutcome.Unavailable
-
     private fun nr(block: (CellInfoNr) -> ProbeOutcome): ProbeOutcome {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return ProbeOutcome.Unavailable
         return cells().filterIsInstance<CellInfoNr>().firstOrNull()?.let(block)
             ?: ProbeOutcome.Unavailable
     }
 
+    // CellInfoNr's accessors are declared against the CellSignalStrength and CellIdentity base
+    // types, so the narrow types have to be recovered. The casts cannot fail on a CellInfoNr,
+    // but a safe cast keeps a vendor implementation from taking the report down with it.
     private fun nrSignal(block: (CellSignalStrengthNr) -> ProbeOutcome): ProbeOutcome =
-        nr { block(it.cellSignalStrength) }
+        nr { cell ->
+            val strength = cell.cellSignalStrength as? CellSignalStrengthNr
+                ?: return@nr ProbeOutcome.Unavailable
+            block(strength)
+        }
 
     private fun nrIdentity(block: (CellIdentityNr) -> ProbeOutcome): ProbeOutcome {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return ProbeOutcome.Unavailable
-        return nr { block(it.cellIdentity) }
+        return nr { cell ->
+            val identity = cell.cellIdentity as? CellIdentityNr
+                ?: return@nr ProbeOutcome.Unavailable
+            block(identity)
+        }
     }
 
     private inline fun wifiInfo(block: (WifiInfo) -> ProbeOutcome): ProbeOutcome =
@@ -420,15 +424,6 @@ public class AndroidPlatformProbe(
         TelephonyManager.NETWORK_TYPE_NR -> "NR"
         else -> "type($type)"
     }
-
-    private fun generateGnssCapabilities(capabilities: android.location.GnssCapabilities): String =
-        buildString {
-            append("top=${capabilities.hasGnssAntennaInfo()} ")
-            append("meas=${capabilities.hasGnssMeasurements()} ")
-            append("status=${capabilities.hasGnssStatus()} ")
-            append("nav=${capabilities.hasGnssNavigationMessages()} ")
-            append("carrierPhase=${capabilities.hasCarrierPhaseMeasurements()}")
-        }
 
     private companion object {
         const val TAG = "CapabilityProbe"
