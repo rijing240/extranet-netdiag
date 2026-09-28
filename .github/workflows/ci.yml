@@ -72,15 +72,23 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # The ubuntu-latest image already ships the SDK and puts cmdline-tools on PATH, so the
-      # third-party setup-android action is not needed and its own sdkmanager invocation fails
-      # on current images. Install only the packages the build actually targets.
-      - name: Install Android SDK packages
+      # The ubuntu-latest image already ships the SDK, but cmdline-tools is not on PATH and the
+      # directory version varies, so sdkmanager is located rather than assumed. Install failures
+      # are tolerated: if the runner already has platform 35 and build-tools 35 the build will
+      # proceed, and the inventory printed below is what to read when it does not.
+      - name: Provision the Android SDK
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
+          echo "sdkmanager=${SDKMGR:-NOT FOUND}"
+          if [ -n "$SDKMGR" ]; then
+            chmod +x "$SDKMGR"
+            yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+            "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          fi
+          echo "--- installed platforms ---"; ls "$SDK/platforms" 2>/dev/null || true
+          echo "--- installed build-tools ---"; ls "$SDK/build-tools" 2>/dev/null || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -117,15 +125,23 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # The ubuntu-latest image already ships the SDK and puts cmdline-tools on PATH, so the
-      # third-party setup-android action is not needed and its own sdkmanager invocation fails
-      # on current images. Install only the packages the build actually targets.
-      - name: Install Android SDK packages
+      # The ubuntu-latest image already ships the SDK, but cmdline-tools is not on PATH and the
+      # directory version varies, so sdkmanager is located rather than assumed. Install failures
+      # are tolerated: if the runner already has platform 35 and build-tools 35 the build will
+      # proceed, and the inventory printed below is what to read when it does not.
+      - name: Provision the Android SDK
         run: |
-          echo "ANDROID_HOME=${ANDROID_HOME:-unset}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-unset}"
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
+          echo "sdkmanager=${SDKMGR:-NOT FOUND}"
+          if [ -n "$SDKMGR" ]; then
+            chmod +x "$SDKMGR"
+            yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+            "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          fi
+          echo "--- installed platforms ---"; ls "$SDK/platforms" 2>/dev/null || true
+          echo "--- installed build-tools ---"; ls "$SDK/build-tools" 2>/dev/null || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
