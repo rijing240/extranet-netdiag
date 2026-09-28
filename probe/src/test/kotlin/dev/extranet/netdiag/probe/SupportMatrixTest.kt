@@ -16,7 +16,7 @@ class SupportMatrixTest {
         deviceName: String,
         statuses: Map<String, SupportStatus>,
     ) = CapabilityReport(
-        device = FakePlatformSource.device(sdkInt, device = deviceName),
+        device = FakePlatformSource.descriptor(sdkInt, device = deviceName),
         generatedAtEpochMillis = 0L,
         findings = statuses.map { (id, status) ->
             CapabilityFinding(

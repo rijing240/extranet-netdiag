@@ -2,6 +2,7 @@ package dev.extranet.netdiag.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -91,8 +92,9 @@ public fun CapabilityProbeScreen(
     }
 }
 
+// Declared on ColumnScope so the findings list can take the remaining height with weight(1f).
 @Composable
-private fun ReportBody(state: ProbeUiState.Done) {
+private fun ColumnScope.ReportBody(state: ProbeUiState.Done) {
     val report = state.report
     Spacer(Modifier.height(4.dp))
     Text(report.summaryLine(), style = MaterialTheme.typography.titleSmall)

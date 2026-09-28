@@ -92,7 +92,14 @@ class TimingAdvanceTest {
         // Asymmetric on purpose: non-line-of-sight can only lengthen the path.
         assertEquals(16 * TimingAdvance.METRES_PER_BASIC_UNIT - TimingAdvance.NLOS_BIAS_MIN_METRES, band.minMetres, 0.001)
         assertEquals(16 * TimingAdvance.METRES_PER_BASIC_UNIT + TimingAdvance.NLOS_BIAS_MAX_METRES, band.maxMetres, 0.001)
-        assertTrue(band.spanMetres > 200.0, "conservative band should be at least 200 m wide")
+        // The span is the sum of both bias bounds and is therefore independent of the
+        // reading: 50 m inward cap plus 150 m outward cap = exactly 200 m.
+        assertEquals(
+            TimingAdvance.NLOS_BIAS_MIN_METRES + TimingAdvance.NLOS_BIAS_MAX_METRES,
+            band.spanMetres,
+            1e-9,
+        )
+        assertEquals(200.0, band.spanMetres, 1e-9)
     }
 
     @Test

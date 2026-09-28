@@ -101,7 +101,9 @@ class CapabilityReportTest {
     @Test
     fun `findings can be filtered by system`() {
         val report = sampleReport()
-        assertEquals(3, report.findingsFor(SystemId.SENSOR_CORE).size)
+        // rsrp, lte timing advance, nr timing advance and pci all default to SENSOR_CORE;
+        // the RTT finding is MEASUREMENT_ENGINE and the GNSS finding is INFERENCE.
+        assertEquals(4, report.findingsFor(SystemId.SENSOR_CORE).size)
         assertEquals(1, report.findingsFor(SystemId.MEASUREMENT_ENGINE).size)
         assertEquals(1, report.findingsFor(SystemId.INFERENCE).size)
         assertEquals(0, report.findingsFor(SystemId.COLLECTIVE).size)
@@ -182,7 +184,7 @@ class CapabilityReportTest {
     fun `an empty report is still valid json`() {
         val empty = CapabilityReport(device, 0L, emptyList())
         assertBalanced(empty.toJson())
-        assertEquals("0/0 supported, Google Pixel 6 (API 33)", empty.summaryLine())
+        assertEquals("0/0 supported, 0 unavailable on Google Pixel 6 (API 33)", empty.summaryLine())
     }
 
     @Test

@@ -35,12 +35,24 @@ class BudgetAndGateTest {
     }
 
     @Test
-    fun `one user is exactly the single-device figure in days`() {
+    fun `one continuous user equals the single-device figure in days`() {
+        // singleDeviceHours assumes round-the-clock operation, while fleetDays assumes a daily
+        // quota. They only agree when the quota is a full day, which is the point of keeping
+        // both: the 320-hour figure is a lower bound that no real fleet of volunteers achieves.
         assertEquals(
             ModelGate.singleDeviceHours() / 24.0,
-            ModelGate.fleetDays(users = 1),
+            ModelGate.fleetDays(users = 1, minutesPerUserPerDay = 24.0 * 60.0),
             1e-9,
         )
+    }
+
+    @Test
+    fun `one volunteer at an hour a day is far slower than one continuous device`() {
+        val volunteerDays = ModelGate.fleetDays(users = 1)
+        val continuousDays = ModelGate.singleDeviceHours() / 24.0
+        assertEquals(320.833, volunteerDays, 0.001)
+        assertEquals(13.368, continuousDays, 0.001)
+        assertTrue(volunteerDays / continuousDays == 24.0)
     }
 
     @Test
