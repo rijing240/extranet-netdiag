@@ -1,0 +1,159 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "b0-*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# The repository deliberately ships without a Gradle wrapper JAR (a binary), so every job
+# provisions Gradle itself and invokes the `gradle` binary. Generate the wrapper locally with
+# `gradle wrapper` if you prefer ./gradlew.
+
+jobs:
+  ledger:
+    name: Calculation ledger (independent re-derivation)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Re-derive every ledger constant and compare with the Kotlin source
+        run: python3 tools/verify_ledger.py
+
+  unit-tests:
+    name: Unit tests (pure JVM kernel)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Run core and probe unit tests
+        run: gradle :core:test :probe:test --no-daemon --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-reports
+          path: |
+            core/build/reports/tests/**
+            probe/build/reports/tests/**
+          if-no-files-found: warn
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jvm-test-results
+          path: |
+            core/build/test-results/**
+            probe/build/test-results/**
+          if-no-files-found: warn
+
+  android-build:
+    name: Android build and JVM unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Assemble debug APK and compile instrumented tests
+        run: |
+          gradle \
+            :android:sensor-core:testDebugUnitTest \
+            :app:assembleDebug \
+            :app:assembleDebugAndroidTest \
+            --no-daemon --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: netdiag-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+  probe-on-emulator:
+    name: Capability probe on device (informational)
+    runs-on: ubuntu-latest
+    # An emulator has no radio and no GNSS chipset, so this job proves the harness executes on a
+    # real Android runtime and produces a well-formed report. It is not evidence about hardware
+    # support, which is what the B12 device matrix exists for, so a failure here must not block
+    # a change to the ledger or the probe engine.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install platform and build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the capability probe on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            adb logcat -c
+            gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
+
+      - name: Pull the capability report off the device
+        if: always()
+        run: |
+          adb pull /sdcard/Android/data/dev.extranet.netdiag/files/capability-report.json \
+            capability-report.json || true
+
+      - name: Upload the device report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-capability-report
+          path: |
+            capability-report.json
+            emulator-probe.log
+            app/build/reports/androidTests/**
+            app/build/outputs/androidTest-results/**
+          if-no-files-found: warn

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  S1 Sensor Core. Declares no components yet: B0 only needs the module boundary and the
+  budget policy. The foreground service that owns the radio timeline lands in B2.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

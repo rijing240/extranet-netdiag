@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- S3 Inference. Boundary only in B0: the feature builder, labeller and scoring model land in B8/B9. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

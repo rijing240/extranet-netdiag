@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  S2 Measurement Engine. The permissions the probe catalog interrogates are declared by the
+  application module (the manifest merger requires the app to own user-facing permission
+  requests); this module only reads whether they were granted.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
