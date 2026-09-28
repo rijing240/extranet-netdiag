@@ -83,7 +83,7 @@ jobs:
           SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
           echo "sdkmanager=${SDKMGR:-NOT FOUND}"
           if [ -n "$SDKMGR" ]; then
-            chmod +x "$SDKMGR"
+            # No chmod: the SDK is root-owned on hosted runners and already executable.
             yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
             "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
           fi
@@ -136,7 +136,7 @@ jobs:
           SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
           echo "sdkmanager=${SDKMGR:-NOT FOUND}"
           if [ -n "$SDKMGR" ]; then
-            chmod +x "$SDKMGR"
+            # No chmod: the SDK is root-owned on hosted runners and already executable.
             yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
             "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
           fi
