@@ -161,28 +161,19 @@ jobs:
           target: google_apis
           arch: x86_64
           disable-animations: true
-          # The report has to leave the device inside this step. The action stops the emulator
-          # when the step ends, so any later `adb` has nothing to talk to - which is how the
-          # first version of this job ended up uploading an artifact with no report in it.
+          # Every line below runs in its own shell - the action executes the block line by line,
+          # so no variable set on one line survives to the next and no multi-line construct
+          # survives at all. Keep this to single self-contained commands; the retrieval logic
+          # lives in tools/pull-device-report.sh for that reason.
           #
-          # A plain `adb pull /sdcard/Android/data/<pkg>/files/...` fails from API 30 on: the
-          # shell user cannot read that directory any more. So the first attempt reads internal
-          # storage through `run-as`, which works because a debug build is debuggable, and the
-          # pull is kept as a fallback for older images. If both fail the deliverable is missing,
-          # and this step goes red - informational job or not, that is worth noticing.
+          # The retrieval must happen here rather than in a later step: the action stops the
+          # emulator when this step ends, so a later `adb` has nothing to talk to, which is how
+          # this job first came to upload an artifact with no report in it.
           script: |
-            PKG=dev.extranet.netdiag
             adb logcat -c
             gradle :app:connectedDebugAndroidTest --no-daemon --stacktrace
             adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
-            adb exec-out run-as "$PKG" cat "files/capability-report.json" \
-              > capability-report.json 2>/dev/null || true
-            if [ ! -s capability-report.json ]; then
-              adb pull "/sdcard/Android/data/$PKG/files/capability-report.json" \
-                capability-report.json || true
-            fi
-            wc -c capability-report.json || true
-            test -s capability-report.json
+            bash tools/pull-device-report.sh
 
       # The report is the evidence, so a few counts are printed into the log where a reader of
       # the run can see them without downloading anything.
@@ -192,10 +183,16 @@ jobs:
           python3 - <<'PY'
           import json, collections, pathlib
           path = pathlib.Path("capability-report.json")
-          if not path.exists():
-              print("no report to summarise")
+          if not path.exists() or path.stat().st_size == 0:
+              print("no report to summarise; the pull step is what reports this")
               raise SystemExit(0)
-          report = json.loads(path.read_text())
+          try:
+              report = json.loads(path.read_text())
+          except json.JSONDecodeError as error:
+              # The instrumented test already asserts the report parses, so reaching here means
+              # the file was truncated in transit rather than that the harness is broken.
+              print(f"report is not valid JSON: {error}")
+              raise SystemExit(0)
           device = report["device"]
           print("device:", device.get("manufacturer"), device.get("model"), "API", device.get("sdkInt"))
           counts = collections.Counter(f["status"] for f in report["findings"])
