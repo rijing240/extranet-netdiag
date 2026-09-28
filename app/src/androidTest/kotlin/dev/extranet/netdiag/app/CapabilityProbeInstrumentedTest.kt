@@ -25,8 +25,10 @@ import java.io.File
  * device identity, and the guarantee that a missing permission is reported as a permission
  * problem rather than as broken hardware.
  *
- * The report itself is the artifact: it is written to the app's external files directory so CI
- * can `adb pull` it, and its path is logged for the run.
+ * The report itself is the artifact, and it is written twice: to internal storage, which CI
+ * retrieves with `adb exec-out run-as <applicationId> cat files/...`, and to the app's external
+ * files directory, where a human can find it. The internal copy is the one asserted here
+ * because it is the only one reachable since Android 11 locked down /sdcard/Android/data.
  */
 @RunWith(AndroidJUnit4::class)
 class CapabilityProbeInstrumentedTest {
@@ -74,6 +76,16 @@ class CapabilityProbeInstrumentedTest {
         assertTrue("report file was empty", file.length() > 0L)
         assertEquals(done.json, file.readText())
         Log.i(TAG, "report written to ${done.reportPath} (${file.length()} bytes)")
+
+        // The second copy is best-effort - an unmounted external store is not a probe failure -
+        // but when it is written it must hold the same bytes, because the two are read by
+        // different audiences and a divergence would be a silent lie to one of them.
+        done.externalReportPath?.let { path ->
+            val external = File(path)
+            assertTrue("external report copy was not written: $path", external.exists())
+            assertEquals(done.json, external.readText())
+            Log.i(TAG, "external report copy at $path")
+        }
     }
 
     @Test
@@ -196,6 +208,7 @@ class CapabilityProbeInstrumentedTest {
 
         assertEquals(ProbeCatalog.ALL.size, done.report.findings.size)
         assertNotNull(done.reportPath)
+        assertTrue("internal report file missing", File(done.reportPath).exists())
 
         // The privacy note must survive into the report so a reader knows what was and was not
         // collected.

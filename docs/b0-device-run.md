@@ -36,10 +36,16 @@ report format is built to be aggregated across many devices in the S7 matrix for
 1. `gradle :app:installDebug` (or install `app/build/outputs/apk/debug/app-debug.apk`).
 2. Launch NetDiag and grant location and phone-state permission.
 3. Press **Run + live 8 s**. The live pass is what resolves the asynchronous specs.
-4. The report is written to
+4. The report is written twice: internally, and to
    `/sdcard/Android/data/dev.extranet.netdiag/files/capability-report.json`.
 
 ```bash
+# Works on every API level: a debug build is debuggable, so the shell user may read its
+# internal storage through run-as.
+adb exec-out run-as dev.extranet.netdiag cat files/capability-report.json > capability-report.json
+
+# The external copy is the one you can also find in a file manager, but since API 30 the shell
+# user cannot read /sdcard/Android/data any more, so this pull fails on modern devices.
 adb pull /sdcard/Android/data/dev.extranet.netdiag/files/capability-report.json
 ```
 

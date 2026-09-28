@@ -23,6 +23,7 @@ sealed interface ProbeUiState {
         public val report: CapabilityReport,
         public val json: String,
         public val reportPath: String,
+        public val externalReportPath: String?,
         public val asyncObserved: Int,
     ) : ProbeUiState
 
@@ -49,8 +50,11 @@ public object ProbeHarness {
      * @param liveSession when true, first spends a bounded window listening for the
      *   asynchronous capabilities (GNSS measurements, telephony callbacks, network
      *   transitions). Costs a few seconds and needs location permission to yield anything.
-     * @param outputDirectory where to write the report; defaults to the app's external files
-     *   directory so CI can pull it with `adb pull`.
+     * @param outputDirectory where to write the second copy of the report; defaults to the
+     *   app's external files directory. The internal copy is always written first, because it
+     *   is the retrievable one: since Android 11 the shell user cannot read files under
+     *   `/sdcard/Android/data`, so `adb pull` of the external copy fails and the report has to
+     *   come out through `adb exec-out run-as <applicationId> cat files/<name>`.
      */
     public fun execute(
         context: Context,
@@ -84,17 +88,23 @@ public object ProbeHarness {
         )
         val json = report.toJson()
 
-        val directory = outputDirectory
-            ?: appContext.getExternalFilesDir(null)
-            ?: appContext.filesDir
-        val file = File(directory, REPORT_FILE_NAME)
-        file.parentFile?.mkdirs()
-        file.writeText(json)
+        // Two copies, deliberately. The internal one is what CI can actually retrieve; the
+        // external one is what a human can find on the device with a file manager. Writing only
+        // the external copy silently loses B0's deliverable on any modern Android.
+        val internalFile = File(appContext.filesDir, REPORT_FILE_NAME)
+        internalFile.writeText(json)
+
+        val directory = outputDirectory ?: appContext.getExternalFilesDir(null)
+        val externalFile = directory?.let { File(it, REPORT_FILE_NAME) }?.also { file ->
+            file.parentFile?.mkdirs()
+            file.writeText(json)
+        }
 
         ProbeUiState.Done(
             report = report,
             json = json,
-            reportPath = file.absolutePath,
+            reportPath = internalFile.absolutePath,
+            externalReportPath = externalFile?.absolutePath,
             asyncObserved = asyncOutcomes.size,
         )
     } catch (throwable: Throwable) {

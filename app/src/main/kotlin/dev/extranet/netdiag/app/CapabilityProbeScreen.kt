@@ -109,6 +109,14 @@ private fun ColumnScope.ReportBody(state: ProbeUiState.Done) {
         style = MaterialTheme.typography.bodySmall,
         fontFamily = FontFamily.Monospace,
     )
+    state.externalReportPath?.let { path ->
+        Text(
+            "and to $path",
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     if (state.asyncObserved == 0) {
         Text(
             "no asynchronous spec was observed; those rows are NOT_PROBED, not failures",
