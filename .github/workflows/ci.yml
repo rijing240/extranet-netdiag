@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, "b0-*"]
+    # `b*` covers the batch branches (b0-…, b1-…) as well as main, so a branch gets its own run
+    # as soon as it is pushed rather than only when a pull request is opened.
+    branches: [main, "b*"]
   pull_request:
   workflow_dispatch:
 
@@ -38,8 +40,8 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Run core and probe unit tests
-        run: gradle :core:test :probe:test --no-daemon --stacktrace
+      - name: Run the pure JVM unit tests
+        run: gradle :core:test :probe:test :measure:test --no-daemon --stacktrace
 
       - name: Upload test reports
         if: always()
@@ -49,6 +51,7 @@ jobs:
           path: |
             core/build/reports/tests/**
             probe/build/reports/tests/**
+            measure/build/reports/tests/**
           if-no-files-found: warn
 
       - name: Upload test results
@@ -59,6 +62,7 @@ jobs:
           path: |
             core/build/test-results/**
             probe/build/test-results/**
+            measure/build/test-results/**
           if-no-files-found: warn
 
   android-build:
@@ -182,36 +186,74 @@ jobs:
             adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w dev.extranet.netdiag.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
             grep -q "OK (" instrumentation.txt
-            bash tools/pull-device-report.sh
-            adb logcat -d -s CapabilityProbeTest CapabilityProbe > emulator-probe.log || true
+            bash tools/pull-device-report.sh dev.extranet.netdiag capability-report.json
+            bash tools/pull-device-report.sh dev.extranet.netdiag probe-waterfall.json
+            adb logcat -d -s CapabilityProbeTest CapabilityProbe ProbeEngineTest ProbeEngine > emulator-probe.log || true
             adb uninstall dev.extranet.netdiag
             adb uninstall dev.extranet.netdiag.test
 
-      # The report is the evidence, so a few counts are printed into the log where a reader of
-      # the run can see them without downloading anything.
-      - name: Summarise the device report
+      # The reports are the evidence, so their headline numbers are printed into the log where a
+      # reader of the run can see them without downloading anything.
+      - name: Summarise the device reports
         if: always()
         run: |
           python3 - <<'PY'
-          import json, collections, pathlib
-          path = pathlib.Path("capability-report.json")
-          if not path.exists() or path.stat().st_size == 0:
-              print("no report to summarise; the pull step is what reports this")
-              raise SystemExit(0)
-          try:
-              report = json.loads(path.read_text())
-          except json.JSONDecodeError as error:
-              # The instrumented test already asserts the report parses, so reaching here means
-              # the file was truncated in transit rather than that the harness is broken.
-              print(f"report is not valid JSON: {error}")
-              raise SystemExit(0)
-          device = report["device"]
-          print("device:", device.get("manufacturer"), device.get("model"), "API", device.get("sdkInt"))
-          counts = collections.Counter(f["status"] for f in report["findings"])
-          for status, n in sorted(counts.items()):
-              print(f"  {status:<18} {n}")
-          unreadable = [f["id"] for f in report["findings"] if f["status"] in {"UNAVAILABLE", "THROWS"}]
-          print("not readable on this device:", ", ".join(unreadable) or "none")
+          import collections, json, pathlib
+
+          def load(name):
+              path = pathlib.Path(name)
+              if not path.exists() or path.stat().st_size == 0:
+                  print(f"{name}: missing; the pull step is what reports this")
+                  return None
+              try:
+                  return json.loads(path.read_text())
+              except json.JSONDecodeError as error:
+                  # The instrumented tests already assert their reports parse, so reaching here
+                  # means the file was truncated in transit, not that a harness is broken.
+                  print(f"{name}: not valid JSON: {error}")
+                  return None
+
+          report = load("capability-report.json")
+          if report is not None:
+              device = report["device"]
+              print("--- B0 capability report ---")
+              print("device:", device.get("manufacturer"), device.get("model"), "API", device.get("sdkInt"))
+              for status, n in sorted(collections.Counter(f["status"] for f in report["findings"]).items()):
+                  print(f"  {status:<18} {n}")
+              unreadable = [f["id"] for f in report["findings"] if f["status"] in {"UNAVAILABLE", "THROWS"}]
+              print("not readable on this device:", ", ".join(unreadable) or "none")
+
+          waterfall = load("probe-waterfall.json")
+          if waterfall is not None:
+              print("--- B1 latency waterfall ---")
+              print(
+                  f"{waterfall['setsAttempted']}/{waterfall['setsRequested']} sets, "
+                  f"{waterfall['failedSets']} failed, failure rate {waterfall['failureRate']} "
+                  f"(ceiling {waterfall['failureRateCeiling']}), truncated={waterfall['truncated']}"
+              )
+              print("exit criterion met:", waterfall["meetsExitCriterion"])
+              print("dominant layer:", waterfall["dominantLayer"])
+              print("resolver:", waterfall["resolver"])
+              for row in waterfall["waterfall"]:
+                  print(
+                      f"  {row['layer']:<5} p50 {row['p50Millis']:>5} ms  p95 {row['p95Millis']:>5} ms  "
+                      f"min {row['minMillis']:>5}  max {row['maxMillis']:>5}  "
+                      f"observed {row['observed']:>3}  failed {row['failures']:>3}  skipped {row['skipped']:>3}"
+                  )
+              for mode in waterfall["failureModes"]:
+                  print(f"  failure mode: {mode['count']} x {mode['layer']}: {mode['detail']}")
+              platform = waterfall.get("osDiagnostics")
+              if platform is None:
+                  print("platform diagnostics:", waterfall.get("osDiagnosticsUnavailableReason"))
+              else:
+                  print(
+                      "platform diagnostics: interface", platform.get("interfaceName"),
+                      "transports", platform.get("transports"),
+                      "validation", platform.get("validationResult"),
+                      "probes attempted", platform.get("probesAttemptedBitmask"),
+                      "succeeded", platform.get("probesSucceededBitmask"),
+                      "data stall", platform.get("dataStallSuspected"),
+                  )
           PY
 
       - name: Upload the device report
@@ -221,6 +263,7 @@ jobs:
           name: device-capability-report
           path: |
             capability-report.json
+            probe-waterfall.json
             emulator-probe.log
             instrumentation.txt
             app/build/outputs/androidTest-results/**

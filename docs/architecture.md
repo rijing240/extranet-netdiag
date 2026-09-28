@@ -2,13 +2,13 @@
 
 ## Layering
 
-The blueprint describes five processing layers plus a parallel collective layer. B0 only builds
-the bottom of that stack, but the module boundaries are fixed now so later batches have
-somewhere to land.
+The blueprint describes five processing layers plus a parallel collective layer. B0 built the
+bottom of that stack and B1 added the measurement engine; the module boundaries were fixed in B0
+so later batches have somewhere to land.
 
 ```
 L0 Sensors            :android:sensor-core      radio timeline, GNSS, context, sessions  (B2/B3/B5)
-L1 Normalization      :probe, :core             per-device calibration, ranges, budgets  (B0 done)
+L1 Normalization      :core, :probe, :measure   calibration, ranges, budgets, waterfall  (B0, B1 done)
 L2 Feature/State      :android:inference        coverage / interference / load triple     (B8)
 L3 Classification     :android:inference        deadzone vs DNS vs core outage            (B8/B9)
 L4 Policy / Decision  :android:decision-sdk     NetworkConfidence, offline tripwire       (B10)
@@ -35,13 +35,22 @@ L-C Collective        collective/ (Worker+TS)   ingest, Capacity Atlas, baseline
 :android:sensor-core        S1 + X2
   SampleBudget              sampling policy: 1 Hz cap, duty cycling, thermal governor
 
+:measure                    pure Kotlin/JVM, depends on :core — S2's engine
+  Layer / LayerSample       one stage of a probe: dns, tcp, tls, ttfb
+  ProbeSet / ProbeEngine    one pass through the waterfall, and a run of many
+  Waterfall / LatencyStats  nearest-rank percentiles per stage
+  DnsWire                   the DNS codec, so resolution is timed on the wire
+  SocketProbeSetSource      the four stages, implemented with JDK sockets
+  OsDiagnostics             the platform's own verdict, in a neutral model
+
 :android:measurement        S2 + S7 platform adapters
   AndroidPlatformProbe      PlatformReportSource implemented against real APIs
   AsyncCapabilitySession    live-session probe for GNSS, telephony, network transitions
+  AndroidOsDiagnostics      ConnectivityDiagnosticsManager + the active network's resolver
 
 :android:inference          S3 seam — DropRiskScorer, deliberately unimplemented until B9
 :android:decision-sdk       S4 seam — NetworkConfidence, deliberately unimplemented until B10
-:app                        S6 — capability probe screen + ProbeHarness
+:app                        S6 — capability probe screen + waterfall screen, one harness each
 ```
 
 ### Why the engine is split from the platform
@@ -74,6 +83,34 @@ Two reporting rules keep that output honest, and both are pinned by tests:
 - **The S7 support rate divides by *probed* devices, not by reporting devices.** A device the
   harness never asked says nothing either way about support, so counting it as a failure would
   report the size of the test run as if it were a property of the radio.
+
+## Data flow: probe engine (B1)
+
+```
+probe-waterfall.json ◄── ProbeRun ──► Waterfall ──► p50 / p95 per stage
+                            ▲
+                   ProbeEngine (scheduler, budget, verdict)
+                     │                    │
+      SocketProbeSetSource          OsDiagnosticsSource
+      dns → tcp → tls → ttfb        AndroidOsDiagnostics
+      (JDK sockets, pure JVM)       (ConnectivityDiagnosticsManager)
+```
+
+### Why the probe engine is pure JVM
+
+The four stages of a probe are DNS, TCP, TLS and time-to-first-byte, and none of them is an
+Android API. So `:measure` implements all four with JDK sockets and depends on Android for
+exactly two things, both behind `OsDiagnosticsSource`: the resolver of the active network, and
+the platform's own connectivity verdict.
+
+The alternative — an HTTP client — would have been less code and useless. A client folds name
+lookup, connect, handshake and first byte into one call and hands back a duration for all of it,
+which is precisely the number the waterfall exists to decompose.
+
+The engine itself is a scheduler with a budget: how many sets to run, round robin over which
+targets, when the wall clock cap stops the run, and what verdict follows. All of that is tested
+against a fake `ProbeSetSource` on a machine with no network, which is the only way a run that
+*takes* a hundred sets can be examined in a test that does not.
 
 ## Data flow: telemetry (target, B6 onward)
 
