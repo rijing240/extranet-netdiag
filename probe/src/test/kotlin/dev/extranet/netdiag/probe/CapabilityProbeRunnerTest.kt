@@ -93,7 +93,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `an unknown api returns unavailable rather than aborting the report`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val report = run(source, listOf(spec(id = "never-implemented")))
         assertEquals(SupportStatus.UNAVAILABLE, report.findings.single().status)
     }
@@ -102,7 +102,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `below api level is decided without touching the platform`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(26))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(26))
         val finding = run(source, listOf(spec(id = "nr.ta", requiredApiLevel = 30))).findings.single()
         assertEquals(SupportStatus.BELOW_API_LEVEL, finding.status)
         assertTrue(finding.detail!!.contains("26 < required 30"), finding.detail!!)
@@ -111,7 +111,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `a missing permission is decided without touching the platform`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val finding = run(
             source,
             listOf(spec(id = "cells", requiredPermission = "android.permission.ACCESS_FINE_LOCATION")),
@@ -123,7 +123,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `a missing feature is decided without touching the platform`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val finding = run(
             source,
             listOf(spec(id = "rtt", requiredFeature = "android.hardware.wifi.rtt")),
@@ -134,7 +134,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `api level outranks permission which outranks feature`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(26))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(26))
         val finding = run(
             source,
             listOf(
@@ -148,7 +148,7 @@ class CapabilityProbeRunnerTest {
         ).findings.single()
         assertEquals(SupportStatus.BELOW_API_LEVEL, finding.status)
 
-        val newer = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val newer = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val finding2 = run(
             newer,
             listOf(
@@ -207,7 +207,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `an unresolved async spec is reported as not probed`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val finding = run(source, listOf(spec(id = "gnss", kind = ProbeKind.ASYNC))).findings.single()
         assertEquals(SupportStatus.NOT_PROBED, finding.status)
         assertEquals(emptyList(), source.queried)
@@ -215,7 +215,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `a resolved async spec is classified from its live-session outcome`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val report = run(
             source,
             listOf(spec(id = "gnss", kind = ProbeKind.ASYNC)),
@@ -228,7 +228,7 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `async guards still apply before a live result would be used`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(26))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(26))
         val report = run(
             source,
             listOf(spec(id = "gnss", kind = ProbeKind.ASYNC, requiredApiLevel = 31)),
@@ -241,21 +241,21 @@ class CapabilityProbeRunnerTest {
 
     @Test
     fun `the injected clock sets the report timestamp`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val report = run(source, listOf(spec()), clock = { 1_700_000_000_000L })
         assertEquals(1_700_000_000_000L, report.generatedAtEpochMillis)
     }
 
     @Test
     fun `notes are carried into the report`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val report = run(source, listOf(spec()), notes = listOf("emulator"))
         assertEquals(listOf("emulator"), report.notes)
     }
 
     @Test
     fun `spec notes become finding details when the platform offers none`() {
-        val source = FakePlatformSource(device = FakePlatformSource.descriptor(34))
+        val source = FakePlatformSource(descriptor = FakePlatformSource.descriptor(34))
         val finding = run(source, listOf(spec(note = "why this matters"))).findings.single()
         assertEquals("why this matters", finding.detail)
     }
@@ -273,7 +273,7 @@ class CapabilityProbeRunnerTest {
     @Test
     fun `one finding is produced per spec in catalog order`() {
         val specs = listOf(spec(id = "a"), spec(id = "b"), spec(id = "c"))
-        val report = run(FakePlatformSource(device = FakePlatformSource.descriptor(34)), specs)
+        val report = run(FakePlatformSource(descriptor = FakePlatformSource.descriptor(34)), specs)
         assertEquals(listOf("a", "b", "c"), report.findings.map { it.id })
     }
 

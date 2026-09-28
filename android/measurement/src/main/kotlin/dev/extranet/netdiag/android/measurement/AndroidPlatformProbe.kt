@@ -13,6 +13,7 @@ import android.os.PowerManager
 import android.telephony.CellIdentityLte
 import android.telephony.CellIdentityNr
 import android.telephony.CellInfo
+import android.telephony.CellInfoGsm
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfoWcdma
@@ -92,10 +93,11 @@ public class AndroidPlatformProbe(
             "nr.signal.ssRsrq" -> nrSignal { intOutcome(it.ssRsrq) }
             "nr.signal.ssSinr" -> nrSignal { intOutcome(it.ssSinr) }
             "nr.signal.csiRsrp" -> nrSignal { intOutcome(it.csiRsrp) }
-            "nr.signal.timingAdvance" -> nrSignal {
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return@nrSignal ProbeOutcome.Unavailable
-                intOutcome(it.timingAdvance)
-            }
+            // Only CellSignalStrengthLte exposes a timing-advance getter in the public SDK.
+            // The NR equivalent is not public at compileSdk 35, so this is a guaranteed
+            // UNAVAILABLE rather than a probe. It stays in the catalog because that answer -
+            // timing advance is LTE-only - is one of B0's most consequential findings.
+            "nr.signal.timingAdvance" -> ProbeOutcome.Unavailable
 
             // CellSignalStrengthGsm exposes no timing-advance getter in the public SDK, so this
             // is a guaranteed UNAVAILABLE rather than a probe. It stays in the catalog because

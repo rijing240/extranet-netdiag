@@ -93,7 +93,8 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = API_29,
-            note = "serving-cell range band; the highest-value radio primitive in the plan",
+            note = "serving-cell range band; the highest-value radio primitive in the plan, " +
+                "and the only one of the three timing-advance variants that is public API",
         ),
         ProbeSpec(
             id = "nr.signal.ssRsrp",
@@ -130,7 +131,10 @@ public object ProbeCatalog {
             system = SystemId.SENSOR_CORE,
             kind = ProbeKind.SYNC,
             requiredApiLevel = API_30,
-            note = "NR timing advance; frequently UNAVAILABLE outside vendor firmware",
+            note = "Not public API at compileSdk 35, so this reports UNAVAILABLE by design. " +
+                "Timing advance is therefore LTE-only: the plan's 'LTE/NR' assumption holds " +
+                "for LTE and not for NR, and any NR ranging must fall back to RSRP or to the " +
+                "S7 capability registry showing zero support.",
         ),
         ProbeSpec(
             id = "gsm.signal.timingAdvance",
