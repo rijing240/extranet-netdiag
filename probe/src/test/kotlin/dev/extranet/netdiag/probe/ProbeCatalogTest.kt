@@ -25,7 +25,20 @@ class ProbeCatalogTest {
 
     @Test
     fun `the catalog is substantial enough to be the deliverable`() {
-        assertTrue(ProbeCatalog.ALL.size >= 55, "catalog only had ${ProbeCatalog.ALL.size} specs")
+        // A floor, not an exact count, because later batches add probes. Raising it whenever
+        // the catalog grows is what stops a refactor from quietly deleting coverage.
+        assertTrue(ProbeCatalog.ALL.size >= 70, "catalog only had ${ProbeCatalog.ALL.size} specs")
+    }
+
+    @Test
+    fun `the timing advance variants that cannot be read explain themselves`() {
+        // Only CellSignalStrengthLte exposes a timing-advance getter in the public SDK, so the
+        // NR and GSM entries always report UNAVAILABLE. Their note is load-bearing: it is what
+        // the runner falls back to, and therefore the only place the reason reaches the report.
+        for (id in listOf("nr.signal.timingAdvance", "gsm.signal.timingAdvance")) {
+            val spec = assertNotNull(ProbeCatalog.byId(id), "missing $id")
+            assertTrue(spec.note!!.contains("public"), "$id must record that the getter is not public API")
+        }
     }
 
     @Test
