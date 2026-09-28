@@ -64,6 +64,17 @@ ProbeCatalog.ALL ──► CapabilityProbeRunner ──► CapabilityReport ─�
                              │  GNSS status, network transitions)
 ```
 
+Two reporting rules keep that output honest, and both are pinned by tests:
+
+- **A finding's `detail` is a diagnostic, not a canned string.** The catalog's own note about an
+  API outranks the runner's generic text (`platform returned UNAVAILABLE`), because explaining
+  ~70 awkward APIs is the whole deliverable of B0 and 46 of the catalog entries carry that
+  explanation. Only a genuine platform diagnostic — an exception reason, a named missing
+  permission — outranks the catalog note.
+- **The S7 support rate divides by *probed* devices, not by reporting devices.** A device the
+  harness never asked says nothing either way about support, so counting it as a failure would
+  report the size of the test run as if it were a property of the radio.
+
 ## Data flow: telemetry (target, B6 onward)
 
 ```

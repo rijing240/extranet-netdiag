@@ -49,7 +49,10 @@ public class CapabilityProbeRunner(
                 requiredApiLevel = spec.requiredApiLevel,
                 status = report.status,
                 observedValue = report.observed,
-                detail = report.detail ?: spec.note,
+                // A real diagnostic explains this device; a catalog note explains the API. The
+                // catalog note wins only over canned, content-free platform text, so an
+                // UNAVAILABLE finding arrives carrying the reason it is unavailable.
+                detail = report.detail ?: spec.note ?: report.fallbackDetail,
             )
         }
         return CapabilityReport(
@@ -63,7 +66,10 @@ public class CapabilityProbeRunner(
     private data class Classification(
         val status: SupportStatus,
         val observed: String? = null,
+        /** A genuine diagnostic, such as an exception reason or a named missing permission. */
         val detail: String? = null,
+        /** Canned text, kept only when the catalog has nothing of its own to say. */
+        val fallbackDetail: String? = null,
     )
 
     private fun classify(spec: ProbeSpec, asyncOutcome: ProbeOutcome?): Classification {
@@ -118,7 +124,7 @@ public class CapabilityProbeRunner(
 
         ProbeOutcome.Unavailable -> Classification(
             status = SupportStatus.UNAVAILABLE,
-            detail = "platform returned UNAVAILABLE",
+            fallbackDetail = "platform returned UNAVAILABLE",
         )
 
         is ProbeOutcome.Failed -> Classification(
@@ -128,12 +134,12 @@ public class CapabilityProbeRunner(
 
         ProbeOutcome.Denied -> Classification(
             status = SupportStatus.PERMISSION_DENIED,
-            detail = "platform refused for permission reasons",
+            fallbackDetail = "platform refused for permission reasons",
         )
 
         ProbeOutcome.Absent -> Classification(
             status = SupportStatus.FEATURE_ABSENT,
-            detail = "platform reported the feature as absent",
+            fallbackDetail = "platform reported the feature as absent",
         )
     }
 }

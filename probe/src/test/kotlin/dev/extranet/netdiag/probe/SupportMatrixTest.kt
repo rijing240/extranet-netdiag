@@ -95,12 +95,21 @@ class SupportMatrixTest {
         assertEquals(1, rtt.missingCount) // the FEATURE_ABSENT device
         // The third device's NOT_PROBED contributes to neither count.
         assertEquals(1, rtt.devicesReporting - rtt.supportedCount - rtt.missingCount)
+
+        assertEquals(1, rtt.notProbedCount)
+        assertEquals(2, rtt.probedCount)
+        // Critically it also leaves the denominator: asking two devices and succeeding on one
+        // is 50 percent, not 33, and the matrix must not report test-run size as if it were a
+        // limit of the radio.
+        assertEquals(0.5, rtt.supportRate, 0.0)
     }
 
     @Test
     fun `problem rows are worst first and respect the threshold`() {
         val rows = SupportMatrix.build(reports)
         val problems = SupportMatrix.problemRows(rows, threshold = 0.5)
+        // wifi sits exactly on 0.5 because the unprobed device is not in its denominator, so it
+        // is not below the threshold and only the zero-support row is a problem.
         assertEquals(listOf("nr.signal.timingAdvance"), problems.map { it.id })
 
         val both = SupportMatrix.problemRows(rows, threshold = 0.8)
@@ -118,8 +127,9 @@ class SupportMatrixTest {
     @Test
     fun `support rate for a system averages its rows`() {
         val rows = SupportMatrix.build(reports)
+        // lte 2 of 3, nr 0 of 3, wifi 1 of the 2 devices that were actually probed.
         assertEquals(
-            (0.6667 + 0.0 + 0.3333) / 3.0,
+            (0.6667 + 0.0 + 0.5) / 3.0,
             SupportMatrix.supportRateFor(SystemId.SENSOR_CORE, rows),
             0.001,
         )
@@ -164,6 +174,7 @@ class SupportMatrixTest {
             supportedCount = 0,
             unavailableCount = 0,
             missingCount = 0,
+            notProbedCount = 0,
         )
         assertEquals(0.0, row.supportRate, 0.0)
     }

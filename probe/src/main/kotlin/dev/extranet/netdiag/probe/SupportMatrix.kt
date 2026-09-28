@@ -13,6 +13,8 @@ import dev.extranet.netdiag.core.report.SystemId
  * @property supportedCount reports where the API returned a usable value.
  * @property unavailableCount reports where the API existed but returned nothing usable.
  * @property missingCount reports where the API or hardware is not present at all.
+ * @property notProbedCount reports where the harness never asked, so the devices behind them
+ *   say nothing either way about support.
  */
 public data class SupportMatrixRow(
     public val id: String,
@@ -22,10 +24,25 @@ public data class SupportMatrixRow(
     public val supportedCount: Int,
     public val unavailableCount: Int,
     public val missingCount: Int,
+    public val notProbedCount: Int,
 ) {
-    /** Fraction of reporting devices on which this capability worked. */
+    /**
+     * Devices that actually got an answer for this capability.
+     *
+     * Fewer than [devicesReporting] whenever the harness skipped the probe on some devices.
+     */
+    public val probedCount: Int
+        get() = devicesReporting - notProbedCount
+
+    /**
+     * Fraction of *probed* devices on which this capability worked.
+     *
+     * Devices the harness never asked are left out of the denominator: a gap in the harness is
+     * not a limit of the hardware, and counting it as a failure would make the matrix report
+     * the size of the test run as if it were a property of the radio.
+     */
     public val supportRate: Double
-        get() = if (devicesReporting == 0) 0.0 else supportedCount.toDouble() / devicesReporting
+        get() = if (probedCount == 0) 0.0 else supportedCount.toDouble() / probedCount
 }
 
 /**
@@ -60,6 +77,7 @@ public object SupportMatrix {
                 missingCount = findings.count {
                     it.status == SupportStatus.BELOW_API_LEVEL || it.status == SupportStatus.FEATURE_ABSENT
                 },
+                notProbedCount = findings.count { it.status == SupportStatus.NOT_PROBED },
             )
         }
     }
@@ -102,6 +120,7 @@ public object SupportMatrix {
             "supportedCount" to Json.number(row.supportedCount),
             "unavailableCount" to Json.number(row.unavailableCount),
             "missingCount" to Json.number(row.missingCount),
+            "notProbedCount" to Json.number(row.notProbedCount),
             "supportRate" to Json.number(kotlin.math.round(row.supportRate * 10_000.0) / 10_000.0),
         ),
         indent,
