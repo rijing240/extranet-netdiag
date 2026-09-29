@@ -27,6 +27,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.measure.MiniThroughputProbe
 import dev.extranet.netdiag.measure.RadioSample
+import dev.extranet.netdiag.measure.RadioTimeline
 import dev.extranet.netdiag.measure.SignalCompass
 import dev.extranet.netdiag.measure.TwoHopProbe
 
