@@ -54,6 +54,7 @@ public class MainActivity : ComponentActivity() {
 private enum class Screen(val tab: String) {
     CAPABILITY("Probe"),
     WATERFALL("Waterfall"),
+    TIMELINE("Timeline"),
 }
 
 @Composable
@@ -99,6 +100,7 @@ private fun NetDiagApp() {
         when (current) {
             Screen.CAPABILITY -> ProbeRoute(Modifier.weight(1f))
             Screen.WATERFALL -> MeasurementRoute(Modifier.weight(1f))
+            Screen.TIMELINE -> TimelineRoute(Modifier.weight(1f))
         }
     }
 }
@@ -123,6 +125,27 @@ private fun TabLabel(label: String, selected: Boolean, modifier: Modifier = Modi
         }
         Spacer(Modifier.height(4.dp))
     }
+}
+
+@Composable
+private fun TimelineRoute(modifier: Modifier = Modifier) {
+    val viewModel: TimelineViewModel = viewModel()
+    val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+
+    TimelineScreen(
+        state = state,
+        onRun = { durationMillis -> viewModel.runSession(durationMillis) },
+        onShareCsv = { csv ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_SUBJECT, "B2 radio timeline log")
+                putExtra(Intent.EXTRA_TEXT, csv)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share radio timeline"))
+        },
+        modifier = modifier,
+    )
 }
 
 @Composable

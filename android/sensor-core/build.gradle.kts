@@ -21,14 +21,17 @@ android {
     }
 
     lint {
-        // Lint findings are reported but must not block the B0 build while the module is a
-        // skeleton. Tighten to abortOnError = true once S1 has real listeners in B2.
+        // NewApi and MissingPermission findings are deliberate: this module interrogates APIs
+        // above minSdk behind explicit version checks. Reported, not fatal, until S1's device
+        // matrix (B12) proves the guards complete.
         abortOnError = false
     }
 }
 
 dependencies {
     implementation(project(":core"))
+    implementation(project(":measure"))
+    implementation(libs.coroutines.android)
 
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.junit)
