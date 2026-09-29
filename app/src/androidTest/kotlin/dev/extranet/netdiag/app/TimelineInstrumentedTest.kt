@@ -14,6 +14,9 @@ import org.junit.runner.RunWith
  * An emulator has no radio, so these tests assert the machinery - cadence, accounting, CSV
  * shape, graceful degradation - rather than radio values. The A03's own session is the
  * hardware evidence and lives in the batch report.
+ *
+ * Argument-order note, because it cost three CI cycles: every assertion in this file uses
+ * org.junit.Assert, whose order is assertTrue(message, condition). No exceptions.
  */
 @RunWith(AndroidJUnit4::class)
 class TimelineInstrumentedTest {
@@ -33,21 +36,21 @@ class TimelineInstrumentedTest {
             // 1 Hz over 6 s must land in 4..9 samples: late first tick or scheduler slack
             // absorbs a little, but a runaway or a stalled sampler fails here.
             assertTrue(
-                timeline.size() in 4..9,
                 "expected ~6 samples at 1 Hz, got ${timeline.size()}",
+                timeline.size() in 4..9,
             )
 
             val summary = timeline.summary()
             assertTrue(
-                summary.samples == timeline.size(),
                 "summary must account for every sample: ${summary.samples} vs ${timeline.size()}",
+                summary.samples == timeline.size(),
             )
             // Every sample must have a network answer on an emulator: it always has Wi-Fi.
             assertTrue(
-                summary.withNetworkType >= summary.samples - 1,
                 "network type missing on ${summary.samples - summary.withNetworkType} samples",
+                summary.withNetworkType >= summary.samples - 1,
             )
-            // The listener registration result is worth one honest assert either way.
+            // The listener registration result is worth one honest log either way.
             Log.i(TAG, "telephony listeners registered: $registered")
         } finally {
             session.stop()
