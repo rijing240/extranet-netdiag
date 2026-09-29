@@ -105,10 +105,13 @@ class SocketProbeSetSourceTest {
             (tls.outcome as LayerOutcome.Skipped).reason.contains("not attempted"),
             "the skip reason must say why the stage was not attempted",
         )
-        // A refusal is fast, but it is not a measurement: nothing about the refusal is
-        // aggregated into the percentiles.
-        assertEquals(0L, set.durationMillis(Layer.TLS))
-        assertEquals(0L, set.durationMillis(Layer.TTFB))
+        // A refusal is fast, but it is not a measurement: a skipped stage carries no duration
+        // (the raw sample holds 0) and the accessor reports null, so nothing about the refusal
+        // is aggregated into the percentiles.
+        assertEquals(0L, tls.durationMillis)
+        assertEquals(0L, ttfb.durationMillis)
+        assertEquals(null, set.durationMillis(Layer.TLS))
+        assertEquals(null, set.durationMillis(Layer.TTFB))
     }
 
     /** Starts a loopback responder and registers it for cleanup. */
