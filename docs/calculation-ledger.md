@@ -158,6 +158,23 @@ rediscover it: a set's worst case is 13,000 ms, so a run in which every stage of
 out can only finish **15** of the 100 sets before the cap stops it. That is deliberate — the
 report then says it was truncated, and a truncated run is not allowed to claim the criterion.
 
+## Radio timeline budget (B2, `TimelineBudget`)
+
+| Parameter | Value | Why this number |
+|---|---|---|
+| Ring capacity | 7,200 samples | two hours at the 1 Hz cap; a ring that grows unbounded is a leak |
+| Sample size | 26 B | the plan's per-sample envelope, unchanged |
+| Ring footprint | 187,200 B | capacity × sample size; the timeline lives in memory |
+| Compass sectors | 16 | 22.5° each; coarse enough to fill on a short walk |
+| Sector evidence floor | 5 samples | below this a sector has not been visited, it has been passed |
+| Improvement threshold | 2.0 dB | above the ~1 dB multipath wiggle on a handset |
+| Two-hop rounds | 3 | one lost packet is not a diagnosis |
+| Gateway / internet budgets | 2,000 / 5,000 ms | the first hop is near, the far hop may not be |
+| Reality-check payload | 1,000,000 B | a check a pay-as-you-go user can afford to run |
+| Reality-check timeout | 20,000 ms | bounded even on a dead network |
+| Throughput verdict bands | 0.5 / 10 Mbps | POOR below, GOOD above, MARGINAL between |
+| CSV columns | 11 | the ledger order, so exports never drift between sessions |
+
 ## Discrepancies found in the approved plan
 
 Recorded rather than silently absorbed. None of them changes a decision; two of them changed a
@@ -174,6 +191,16 @@ number.
    `conservativeRangeFromBasicUnits` additionally applies the NLOS bias.
 4. **Shannon anchors.** The plan's rounded "7.9 Mbps" at −5 dB is 28 kbps away from the true
    7.93 Mbps. The ledger carries full precision so the value can serve as a regression baseline.
+5. **Signal-compass semantics.** The compass does not locate the tower (Android exposes no
+   tower coordinates; see `rsrp-multilateration` above). It aggregates sampled RSRP by the
+   user's heading into 16 sectors and names one only when its median beats the overall median
+   by ≥ 2 dB — above the ~1 dB multipath wiggle on a handset. The improvement sign matters:
+   RSRP is negative dBm, closer to zero is stronger, so improvement is sector − overall.
+   The inverted form pointed at the worst sector and was caught by the needle test.
+6. **Timing-advance sentinel.** The platform reports `Int.MAX_VALUE` for "not in this burst"
+   (observed live on an A03 whenever data was idle). The timeline stores it as absent, never
+   as a distance, and the CSV writes an empty cell — a sentinel in a spreadsheet would draw
+   a line to 2.1 billion metres.
 
 ## Retired calculations
 
