@@ -17,12 +17,13 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Pinned debug key, checked in: without it every CI runner signs with its own throwaway
+    // key and Android refuses to install a differently-signed APK over the previous one
+    // (INSTALL_FAILED_UPDATE_INCOMPATIBLE). AGP creates the 'debug' config itself, so it is
+    // reconfigured in place rather than added. The password is the standard "android" pair
+    // for a debug key; nothing here signs production.
     signingConfigs {
-        create("debug") {
-            // Pinned debug key, checked in: without it every CI runner signs with its own
-            // throwaway key and Android refuses to install a differently-signed APK over the
-            // previous one (INSTALL_FAILED_UPDATE_INCOMPATIBLE). The password is the standard
-            // "android" pair for a debug key; nothing here signs production.
+        named("debug") {
             storeFile = rootProject.file("keystore/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
@@ -33,9 +34,6 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-        }
-        debug {
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
