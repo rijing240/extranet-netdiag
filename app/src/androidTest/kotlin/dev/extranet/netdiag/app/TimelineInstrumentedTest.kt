@@ -39,7 +39,10 @@ class TimelineInstrumentedTest {
             )
 
             val summary = timeline.summary()
-            assertEquals(6, summary.samples, 0.0)
+            assertTrue(
+                kotlin.math.abs(summary.samples - 6) <= 0,
+                "summary must account for every sample: ${summary.samples}",
+            )
             // Every sample must have a network answer on an emulator: it always has Wi-Fi.
             assertTrue(
                 summary.withNetworkType >= summary.samples - 1,
@@ -60,7 +63,10 @@ class TimelineInstrumentedTest {
             val lines = csv.trimEnd().lines()
 
             assertTrue(lines.first().startsWith("epochMillis,"), "header must lead: ${lines.first()}")
-            assertEquals(timeline.size() + 1, lines.size, 1.0, "one row per sample plus header")
+            assertTrue(
+                kotlin.math.abs((timeline.size() + 1) - lines.size) <= 1,
+                "one row per sample plus header: ${timeline.size()} samples, ${lines.size} lines",
+            )
 
             // No sample row may contain the Int.MAX sentinel in the timingAdvance column.
             val taColumn = lines.first().split(",").indexOf("timingAdvance")
