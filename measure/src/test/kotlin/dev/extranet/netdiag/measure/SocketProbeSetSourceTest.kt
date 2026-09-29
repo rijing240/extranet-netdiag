@@ -39,20 +39,20 @@ class SocketProbeSetSourceTest {
         )
 
         val dns = set.sample(Layer.DNS)
-        assertTrue("the DNS stage did not run: $dns", dns?.outcome is LayerOutcome.Ok)
+        assertTrue(dns?.outcome is LayerOutcome.Ok, "the DNS stage did not run: $dns")
         assertTrue(
-            "the resolver delayed 150 ms but the stage measured ${dns?.durationMillis} ms - " +
-                "durations are being read before the work runs",
             dns!!.durationMillis >= 150L,
+            "the resolver delayed 150 ms but the stage measured ${dns.durationMillis} ms - " +
+                "durations are being read before the work runs",
         )
         assertTrue(
-            "attributed time ${set.attributedMillis} is smaller than the DNS stage alone",
             set.attributedMillis >= dns.durationMillis,
+            "attributed time ${set.attributedMillis} is smaller than the DNS stage alone",
         )
         assertEquals(
-            "the resolver used belongs with the number",
             "127.0.0.1:${started.port}",
             dns.note,
+            "the resolver used belongs with the number",
         )
     }
 
@@ -71,9 +71,9 @@ class SocketProbeSetSourceTest {
         val dns = set.sample(Layer.DNS)
         assertTrue(dns?.outcome is LayerOutcome.Ok)
         assertTrue(
-            "a loopback round trip measured ${dns?.durationMillis} ms - a fixed duration is " +
-                "being recorded instead of a timed one",
             dns!!.durationMillis < 2_000L,
+            "a loopback round trip measured ${dns.durationMillis} ms - a fixed duration is " +
+                "being recorded instead of a timed one",
         )
     }
 
@@ -92,7 +92,7 @@ class SocketProbeSetSourceTest {
         )
 
         val tcp = set.sample(Layer.TCP)
-        assertTrue("connect to a closed port did not fail: $tcp", tcp?.outcome is LayerOutcome.Failed)
+        assertTrue(tcp?.outcome is LayerOutcome.Failed, "connect to a closed port did not fail: $tcp")
         assertEquals(Layer.TCP, set.firstFailure)
         assertTrue(set.failed)
         assertFalse(set.complete)
@@ -102,8 +102,8 @@ class SocketProbeSetSourceTest {
         assertTrue(tls.outcome is LayerOutcome.Skipped)
         assertTrue(ttfb.outcome is LayerOutcome.Skipped)
         assertTrue(
-            "the skip reason must say why the stage was not attempted",
             (tls.outcome as LayerOutcome.Skipped).reason.contains("not attempted"),
+            "the skip reason must say why the stage was not attempted",
         )
         // A refusal is fast, but it is not a measurement: nothing about the refusal is
         // aggregated into the percentiles.
