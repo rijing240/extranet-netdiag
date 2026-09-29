@@ -99,6 +99,21 @@ PERCENTILE_P50 = 0.50
 PERCENTILE_P95 = 0.95
 PROBE_WORST_CASE_SET_MS = DNS_TIMEOUT_MS + TCP_TIMEOUT_MS + TLS_TIMEOUT_MS + TTFB_TIMEOUT_MS
 
+# B2's timeline budget. The compass threshold is re-derived, not copied: the sector must beat
+# noise, and multipath wiggles on a handset are of the order of a decibel.
+RING_CAPACITY_SAMPLES = 7_200
+COMPASS_SECTORS = 16
+COMPASS_IMPROVEMENT_THRESHOLD_DB = 2.0
+COMPASS_MIN_SECTOR_SAMPLES = 5
+TWO_HOP_ROUNDS = 3
+GATEWAY_PROBE_TIMEOUT_MS = 2_000
+INTERNET_PROBE_TIMEOUT_MS = 5_000
+THROUGHPUT_PAYLOAD_BYTES = 1_000_000
+THROUGHPUT_TIMEOUT_MS = 20_000
+THROUGHPUT_PING_ROUNDS = 5
+THROUGHPUT_POOR_BPS = 62_500.0      # 0.5 Mbps
+THROUGHPUT_GOOD_BPS = 1_250_000.0   # 10 Mbps
+
 # ---------------------------------------------------------------------------------------
 # Kotlin source extraction
 # ---------------------------------------------------------------------------------------
@@ -315,6 +330,20 @@ def main() -> int:
     r.check("PERCENTILE_P50", PERCENTILE_P50, "PERCENTILE_P50", 1e-12)
     r.check("PERCENTILE_P95", PERCENTILE_P95, "PERCENTILE_P95", 1e-12)
 
+    r.check("RING_CAPACITY_SAMPLES", RING_CAPACITY_SAMPLES, "RING_CAPACITY_SAMPLES", 0)
+    r.check("SAMPLE_BYTES", RADIO_SAMPLE_BYTES, "SAMPLE_BYTES", 0)
+    r.check("COMPASS_SECTORS", COMPASS_SECTORS, "COMPASS_SECTORS", 0)
+    r.check("COMPASS_MIN_SECTOR_SAMPLES", COMPASS_MIN_SECTOR_SAMPLES, "COMPASS_MIN_SECTOR_SAMPLES", 0)
+    r.check("COMPASS_IMPROVEMENT_THRESHOLD_DB", COMPASS_IMPROVEMENT_THRESHOLD_DB, "COMPASS_IMPROVEMENT_THRESHOLD_DB", 1e-12)
+    r.check("TWO_HOP_ROUNDS", TWO_HOP_ROUNDS, "TWO_HOP_ROUNDS", 0)
+    r.check("GATEWAY_PROBE_TIMEOUT_MILLIS", GATEWAY_PROBE_TIMEOUT_MS, "GATEWAY_PROBE_TIMEOUT_MILLIS", 0)
+    r.check("INTERNET_PROBE_TIMEOUT_MILLIS", INTERNET_PROBE_TIMEOUT_MS, "INTERNET_PROBE_TIMEOUT_MILLIS", 0)
+    r.check("THROUGHPUT_PAYLOAD_BYTES", THROUGHPUT_PAYLOAD_BYTES, "THROUGHPUT_PAYLOAD_BYTES", 0)
+    r.check("THROUGHPUT_TIMEOUT_MILLIS", THROUGHPUT_TIMEOUT_MS, "THROUGHPUT_TIMEOUT_MILLIS", 0)
+    r.check("THROUGHPUT_PING_ROUNDS", THROUGHPUT_PING_ROUNDS, "THROUGHPUT_PING_ROUNDS", 0)
+    r.check("THROUGHPUT_POOR_BYTES_PER_SECOND", THROUGHPUT_POOR_BPS, "THROUGHPUT_POOR_BYTES_PER_SECOND", 0)
+    r.check("THROUGHPUT_GOOD_BYTES_PER_SECOND", THROUGHPUT_GOOD_BPS, "THROUGHPUT_GOOD_BYTES_PER_SECOND", 0)
+
     rc = r.emit()
 
     # String constants cannot be numerically cross-checked, so assert them verbatim.
@@ -364,6 +393,14 @@ def main() -> int:
     print(f"  worst case for one set, ms            {PROBE_WORST_CASE_SET_MS:>18,}  (four stage budgets)")
     print(f"  wall clock cap, ms                    {PROBE_WALL_CLOCK_CAP_MS:>18,}  (2 x sets x typical)")
     print(f"  sets finishable if every stage times out {sets_in_cap:>14,}  (then the run is truncated)")
+
+    print()
+    print("radio timeline budget (B2):")
+    print(f"  ring capacity, samples                {RING_CAPACITY_SAMPLES:>18,}  (2 h at 1 Hz)")
+    print(f"  ring footprint, bytes                 {RING_CAPACITY_SAMPLES * RADIO_SAMPLE_BYTES:>18,}  (26 B per sample)")
+    print(f"  compass sectors                       {COMPASS_SECTORS:>18}  (22.5 degrees each)")
+    print(f"  compass improvement threshold, dB     {COMPASS_IMPROVEMENT_THRESHOLD_DB:>18}  (above multipath noise)")
+    print(f"  throughput verdict bands, Mbps        {THROUGHPUT_POOR_BPS * 8 / 1e6:>13.2f} / {THROUGHPUT_GOOD_BPS * 8 / 1e6:.2f}")
 
     print()
     print("plan discrepancies found (documented in docs/calculation-ledger.md):")
