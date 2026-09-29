@@ -26,10 +26,9 @@ public object SignalCompass {
         public val centerDegrees: Double,
         public val sampleCount: Int,
         public val medianRsrpDbm: Double?,
-    ) {
         /** Degrees better than the all-around median, positive when this sector beats it. */
-        public val improvementDb: Double? = null
-    }
+        public val improvementDb: Double? = null,
+    )
 
     /**
      * The compass verdict for a session's worth of samples.
