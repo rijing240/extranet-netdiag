@@ -200,7 +200,12 @@ public class SocketProbeSetSource(
     private fun <T> timed(layer: Layer, timeoutMillis: Int, block: () -> T): Pair<LayerSample, T?> {
         val start = System.nanoTime()
         return try {
-            LayerSample(layer, LayerOutcome.Ok, elapsedMillis(start)) to block()
+            // The block runs first and the duration is read after it returns. Evaluating the
+            // duration in the sample's argument list would read the timer before the work ran
+            // and record every stage as 0 ms - which is exactly the regression this order, and
+            // SocketProbeSetSourceTest's delayed loopback responder, exist to prevent.
+            val result = block()
+            LayerSample(layer, LayerOutcome.Ok, elapsedMillis(start)) to result
         } catch (timeout: SocketTimeoutException) {
             LayerSample(layer, LayerOutcome.Timeout(timeoutMillis), elapsedMillis(start)) to null
         } catch (throwable: Throwable) {
