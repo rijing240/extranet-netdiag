@@ -63,18 +63,18 @@ class TimelineInstrumentedTest {
             val csv = session.exportCsv()
             val lines = csv.trimEnd().lines()
 
-            assertTrue(lines.first().startsWith("epochMillis,"), "header must lead: ${lines.first()}")
+            assertTrue("header must lead: ${lines.first()}", lines.first().startsWith("epochMillis,"))
             assertTrue(
-                kotlin.math.abs((timeline.size() + 1) - lines.size) <= 1,
                 "one row per sample plus header: ${timeline.size()} samples, ${lines.size} lines",
+                kotlin.math.abs((timeline.size() + 1) - lines.size) <= 1,
             )
 
             // No sample row may contain the Int.MAX sentinel in the timingAdvance column.
             val taColumn = lines.first().split(",").indexOf("timingAdvance")
-            assertTrue(taColumn >= 0, "the CSV header must contain the timingAdvance column")
+            assertTrue("the CSV header must contain the timingAdvance column", taColumn >= 0)
             for (row in lines.drop(1)) {
                 val cell = row.split(",")[taColumn]
-                assertTrue(cell != "2147483647", "the sentinel leaked into the CSV")
+                assertTrue("the sentinel leaked into the CSV", cell != "2147483647")
             }
         } finally {
             session.stop()
@@ -105,8 +105,8 @@ class TimelineInstrumentedTest {
         Log.i(TAG, "two-hop: ${verdict.statement()}")
         // On the emulator's NAT, both hops answer; on a dead network, neither does. What must
         // never happen is a crash or a missing statement.
-        assertTrue(verdict.gateway.address.isNotBlank(), "the gateway hop must carry an address or a reason")
-        assertTrue(verdict.internet.address.isNotBlank(), "the internet hop must carry an address")
+        assertTrue("the gateway hop must carry an address or a reason", verdict.gateway.address.isNotBlank())
+        assertTrue("the internet hop must carry an address", verdict.internet.address.isNotBlank())
     }
 
     private companion object {
