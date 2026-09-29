@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    # `b*` covers the batch branches (b0-…, b1-…) as well as main, so a branch gets its own run
-    # as soon as it is pushed rather than only when a pull request is opened.
-    branches: [main, "b*"]
+    # `b*` covers the batch branches (b0-…, b1-…) and `editorial-*` the UI branches, so a
+    # branch gets its own run as soon as it is pushed rather than only when a PR is opened.
+    branches: [main, "b*", "editorial-*"]
   pull_request:
   workflow_dispatch:
 

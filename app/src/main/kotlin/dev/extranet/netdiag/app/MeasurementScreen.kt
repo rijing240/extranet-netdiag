@@ -1,20 +1,20 @@
 package dev.extranet.netdiag.app
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -26,12 +26,12 @@ import dev.extranet.netdiag.measure.OsDiagnostics
 import dev.extranet.netdiag.measure.ProbeRun
 
 /**
- * B1's exit-criterion surface: where the time goes, layer by layer, on this network.
+ * B1's exit-criterion surface, in the editorial language.
  *
- * The numbers are the deliverable; the drawing of them as a flame graph is S6's job in a later
- * batch. What this screen has to make impossible is misreading the run: a p50 next to a p95, the
- * failure rate next to the ceiling it is judged against, and the platform's own verdict next to
- * ours so the two can be compared rather than confused.
+ * The hero carries the verdict so it reads before anything else; the waterfall table keeps the
+ * reference site's monospace discipline - numbers are the product, so they are set in the
+ * measuring face, not a display face. The platform's own verdict is shown beside ours, and the
+ * privacy line closes the page like the reference footer.
  */
 @Composable
 public fun MeasurementScreen(
@@ -40,104 +40,154 @@ public fun MeasurementScreen(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
-        Text("B1 latency waterfall", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(4.dp))
-        Text(
-            "Name lookup, connect, handshake, first byte - split apart so a fault can be attributed.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column(modifier.fillMaxSize()) {
+        HeroBand(
+            eyebrow = "B1 - latency waterfall",
+            title = "Where does the time go?",
+            subtitle = "Name lookup, connect, handshake, first byte - split apart so a fault can be attributed.",
         )
-        Spacer(Modifier.height(12.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onRun) { Text("Run 100 sets") }
-            OutlinedButton(onClick = onShare, enabled = state is MeasurementUiState.Done) {
-                Text("Share JSON")
+        Column(Modifier.padding(horizontal = 20.dp)) {
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InkButton("Run 100 sets", onClick = onRun, modifier = Modifier.weight(1f))
+                LineButton(
+                    "Share",
+                    onClick = onShare,
+                    modifier = Modifier.weight(1f),
+                    enabled = state is MeasurementUiState.Done,
+                )
             }
+            Spacer(Modifier.height(14.dp))
         }
 
-        Spacer(Modifier.height(12.dp))
-
         when (state) {
-            MeasurementUiState.Idle -> Text(
-                "No run yet. A run asks the platform for its own connectivity verdict, then " +
-                    "measures 100 probe sets against two well-known hosts.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-
-            is MeasurementUiState.Running -> Row(verticalAlignment = Alignment.CenterVertically) {
-                CircularProgressIndicator(Modifier.width(20.dp).height(20.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(state.note, style = MaterialTheme.typography.bodySmall)
-            }
-
-            is MeasurementUiState.Failed -> Text(
-                text = "Harness failed: ${state.message}",
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-
+            MeasurementUiState.Idle -> IdleNote()
+            is MeasurementUiState.Running -> RunningNote(state.note)
+            is MeasurementUiState.Failed -> FailedNote(state.message)
             is MeasurementUiState.Done -> WaterfallBody(state)
         }
     }
 }
 
-// Declared on ColumnScope so the waterfall can take the remaining height with weight(1f).
+@Composable
+private fun IdleNote() {
+    Column(Modifier.padding(horizontal = 20.dp)) {
+        Hairline()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "No run yet. A run asks the platform for its own connectivity verdict, then " +
+                "measures 100 probe sets against two well-known hosts.",
+            style = MaterialTheme.typography.bodySmall,
+            color = Editorial.InkSoft,
+        )
+    }
+}
+
+@Composable
+private fun RunningNote(note: String) {
+    Row(
+        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CircularProgressIndicator(
+            Modifier.width(16.dp).height(16.dp),
+            color = Editorial.Ink,
+            strokeWidth = 2.dp,
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(note, style = MaterialTheme.typography.labelMedium, color = Editorial.InkSoft)
+    }
+}
+
+@Composable
+private fun FailedNote(message: String) {
+    Column(Modifier.padding(horizontal = 20.dp)) {
+        Hairline()
+        Spacer(Modifier.height(12.dp))
+        Text(
+            "HARNESS FAILED",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        Text(
+            message,
+            style = MaterialTheme.typography.bodySmall,
+            color = Editorial.InkSoft,
+        )
+    }
+}
+
+// Declared on ColumnScope so the table can take the remaining height with weight(1f).
 @Composable
 private fun ColumnScope.WaterfallBody(state: MeasurementUiState.Done) {
     val run = state.run
 
-    Text(run.summaryLine(), style = MaterialTheme.typography.titleSmall)
-    Spacer(Modifier.height(4.dp))
-    Text(
-        text = verdictLine(run),
-        style = MaterialTheme.typography.bodySmall,
-        color = if (run.meetsExitCriterion) {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        } else {
-            MaterialTheme.colorScheme.error
-        },
-    )
-    Spacer(Modifier.height(8.dp))
+    Column(Modifier.padding(horizontal = 20.dp)) {
+        Spacer(Modifier.height(4.dp))
+        // The verdict, set like a price: big, mono, green when the criterion is met.
+        Text(
+            if (run.meetsExitCriterion) "EXIT CRITERION MET" else "EXIT CRITERION NOT MET",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (run.meetsExitCriterion) Editorial.Green else MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            verdictFigure(run),
+            style = MaterialTheme.typography.displaySmall,
+            color = if (run.meetsExitCriterion) Editorial.Green else MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            verdictLine(run),
+            style = MaterialTheme.typography.bodySmall,
+            color = Editorial.InkSoft,
+        )
+        Spacer(Modifier.height(14.dp))
 
-    Text(
-        "layer      p50    p95    min    max   ok  fail  skip",
-        style = MaterialTheme.typography.bodySmall,
-        fontFamily = FontFamily.Monospace,
-    )
+        // The table head, in the reference's mono label voice.
+        Text(
+            "layer      p50    p95    min    max   ok  fail  skip",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = FontFamily.Monospace,
+            color = Editorial.Muted,
+        )
+        Spacer(Modifier.height(4.dp))
+    }
+
     LazyColumn(Modifier.weight(1f)) {
         items(run.waterfall) { row -> WaterfallRow(row) }
+
         item {
-            Spacer(Modifier.height(12.dp))
-            FailureModeSection(state)
-        }
-        item {
-            Spacer(Modifier.height(12.dp))
-            PlatformSection(state)
+            Column(Modifier.padding(horizontal = 20.dp)) {
+                Spacer(Modifier.height(14.dp))
+                FailureModeSection(run)
+                Spacer(Modifier.height(14.dp))
+                PlatformSection(run, state)
+                Spacer(Modifier.height(28.dp))
+            }
         }
     }
 }
 
 @Composable
 private fun WaterfallRow(row: LayerStats) {
-    Column {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) {
         Text(
             text = layerLine(row),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             fontFamily = FontFamily.Monospace,
+            color = Editorial.Ink,
         )
         if (row.stats == null) {
             Text(
-                text = "  nothing measured for ${row.layer.wireName}",
+                text = "nothing measured for ${row.layer.wireName}",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Editorial.Muted,
             )
         }
+        Spacer(Modifier.height(6.dp))
+        Hairline()
     }
 }
 
@@ -156,37 +206,36 @@ private fun layerLine(row: LayerStats): String {
         "${row.failures.toString().padStart(4)}  ${row.skipped.toString().padStart(4)}"
 }
 
-/** The verdict, with the arithmetic that produced it rather than only the conclusion. */
-private fun verdictLine(run: ProbeRun): String {
+/** The big number under the verdict: the failure rate against its ceiling. */
+private fun verdictFigure(run: ProbeRun): String {
     val percent = Math.round(run.failureRate * 10_000.0) / 100.0
-    val head = "${run.setsAttempted}/${run.setsRequested} sets, ${run.failedSets} failed ($percent%), " +
-        "ceiling 5%, ${run.measuredWallClockMillis} ms wall clock"
-    return if (run.meetsExitCriterion) {
-        "$head - exit criterion met"
-    } else if (run.truncated) {
-        "$head - NOT met: the wall clock cap stopped the run before it finished"
-    } else {
-        "$head - NOT met"
-    }
+    return "$percent% failures"
 }
 
+/** The arithmetic that produced the verdict, rather than only the conclusion. */
+private fun verdictLine(run: ProbeRun): String =
+    "${run.setsAttempted}/${run.setsRequested} sets, ${run.failedSets} failed, ceiling 5%, " +
+        "${run.measuredWallClockMillis} ms wall clock" +
+        (if (run.truncated) " - stopped by the wall-clock cap" else "") +
+        (run.dominantLayer?.let { " - dominant stage: ${it.wireName}" } ?: "")
+
 @Composable
-private fun FailureModeSection(state: MeasurementUiState.Done) {
-    val run = state.run
-    Text("failure modes", style = MaterialTheme.typography.titleSmall)
+private fun FailureModeSection(run: ProbeRun) {
+    Eyebrow("failure modes")
+    Spacer(Modifier.height(6.dp))
     val modes = run.failureModes
     if (modes.isEmpty()) {
         Text(
-            "none: every attempted stage succeeded",
+            "None: every attempted stage succeeded.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Editorial.Green,
         )
     } else {
         for (mode in modes) {
             Text(
                 "${mode.count} x ${mode.layer.wireName}: ${mode.detail}",
                 style = MaterialTheme.typography.bodySmall,
-                fontFamily = FontFamily.Monospace,
+                color = Editorial.InkSoft,
             )
         }
     }
@@ -199,30 +248,32 @@ private fun FailureModeSection(state: MeasurementUiState.Done) {
  * failing, the reader needs both facts in one place to draw the right conclusion.
  */
 @Composable
-private fun PlatformSection(state: MeasurementUiState.Done) {
-    val run = state.run
-    Text("platform connectivity diagnostics", style = MaterialTheme.typography.titleSmall)
+private fun PlatformSection(run: ProbeRun, state: MeasurementUiState.Done) {
+    Eyebrow("platform connectivity diagnostics")
+    Spacer(Modifier.height(6.dp))
 
     val diagnostics = run.osDiagnostics
     if (diagnostics == null) {
         Text(
-            "no platform report: ${run.osDiagnosticsUnavailableReason}",
+            "No platform report: ${run.osDiagnosticsUnavailableReason}.",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Editorial.InkSoft,
         )
     } else {
         PlatformFacts(run, diagnostics, state)
     }
 
+    Spacer(Modifier.height(10.dp))
+    Hairline()
     Spacer(Modifier.height(8.dp))
     Text(
-        "raw coordinates and cell identities are never included in this report",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        "Raw coordinates and cell identities are never included in this report.",
+        style = MaterialTheme.typography.labelSmall,
+        color = Editorial.Muted,
     )
 }
 
-/** The platform's numbers, one per line. */
+/** The platform's numbers, one per line, in mono. */
 @Composable
 private fun PlatformFacts(
     run: ProbeRun,
@@ -230,7 +281,7 @@ private fun PlatformFacts(
     state: MeasurementUiState.Done,
 ) {
     val lines = listOfNotNull(
-        "interface ${diagnostics.interfaceName ?: "unknown"} mtu ${diagnostics.mtu ?: "?"}",
+        "interface ${diagnostics.interfaceName ?: "unknown"}  mtu ${diagnostics.mtu ?: "?"}",
         "transports ${diagnostics.transports.joinToString(", ").ifEmpty { "none reported" }}",
         "dns ${diagnostics.dnsServers.joinToString(", ").ifEmpty { "none reported" }}",
         "private dns: " + if (diagnostics.privateDnsActive == true) {
@@ -238,7 +289,7 @@ private fun PlatformFacts(
         } else {
             "inactive"
         },
-        "validation result ${diagnostics.validationResult ?: "not reported"}, " +
+        "validation ${diagnostics.validationResult ?: "not reported"}, " +
             "probes attempted ${diagnostics.probesAttemptedBitmask ?: "?"}, " +
             "succeeded ${diagnostics.probesSucceededBitmask ?: "?"}",
         "resolver used by this run: ${run.resolver ?: "none offered"}",
@@ -247,19 +298,22 @@ private fun PlatformFacts(
         } ?: "no data stall suspected during the run",
     )
     for (line in lines) {
-        Text(line, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-    }
-    Text(
-        "report written to ${state.reportPath}",
-        style = MaterialTheme.typography.bodySmall,
-        fontFamily = FontFamily.Monospace,
-    )
-    state.externalReportPath?.let { path ->
         Text(
-            "and to $path",
-            style = MaterialTheme.typography.bodySmall,
+            line,
+            style = MaterialTheme.typography.labelSmall,
             fontFamily = FontFamily.Monospace,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = Editorial.InkSoft,
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    MonoMeta(
+        "report: ${state.reportPath.substringAfterLast('/')}",
+        color = Editorial.Green,
+    )
+    state.externalReportPath?.let {
+        MonoMeta(
+            "shared copy: ${it.substringAfterLast('/')}",
+            color = Editorial.Muted,
         )
     }
 }
