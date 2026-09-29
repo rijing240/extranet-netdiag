@@ -29,7 +29,8 @@ class SignalCompassTest {
         assertEquals(1, SignalCompass.sectorIndex(22.6))
         assertEquals(15, SignalCompass.sectorIndex(359.0))
         assertEquals(0, SignalCompass.sectorIndex(360.0))
-        assertEquals(0, SignalCompass.sectorIndex(-1.0))
+        // -1 degrees is 359 degrees: 1 degree counterclockwise of north, sector 15.
+        assertEquals(15, SignalCompass.sectorIndex(-1.0))
         assertEquals(15, SignalCompass.sectorIndex(-22.5))
     }
 
@@ -114,9 +115,13 @@ class SignalCompassTest {
             repeat(8) { add(sample(270.0, -70)) }
             repeat(8) { add(sample(90.0, -95)) }
         }
-        val needle = SignalCompass.needle(SignalCompass.verdict(samples))
+        val verdict = SignalCompass.verdict(samples)
+        val needle = SignalCompass.needle(verdict)
         assertTrue(needle != null)
-        // 270 degrees is west: cos is ~0, sin is -1.
-        assertEquals(270.0, SignalCompass.verdict(samples).bestSector!!.centerDegrees, 0.001)
+        // 270 degrees falls in sector 12, whose center is 281.25 degrees (west-ish); the
+        // needle points at the sector center, never at one raw heading.
+        assertEquals(12, verdict.bestSector!!.index)
+        assertEquals(281.25, verdict.bestSector!!.centerDegrees, 0.001)
+        assertTrue(verdict.bestSector!!.improvementDb!! > 0, "the best sector must show positive improvement")
     }
 }

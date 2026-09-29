@@ -104,9 +104,11 @@ public object SignalCompass {
         val best = sectors
             .filter { it.sampleCount >= TimelineBudget.COMPASS_MIN_SECTOR_SAMPLES }
             .map { sector ->
-                val improvement = overallMedian?.let { (it - (sector.medianRsrpDbm ?: it)) }
-                // RSRP is negative dBm: higher (closer to 0) is better, so median minus
-                // overall is positive exactly when the sector beats the average.
+                // RSRP is negative dBm: closer to zero is stronger, so a sector beats the
+                // average when its median is ABOVE the overall median. The improvement is
+                // therefore sector - overall; the reverse would recommend the worst sector,
+                // which is exactly the bug that the needle test caught.
+                val improvement = overallMedian?.let { (sector.medianRsrpDbm ?: it) - it }
                 sector.copy(improvementDb = improvement)
             }
             .filter { (it.improvementDb ?: 0.0) >= TimelineBudget.COMPASS_IMPROVEMENT_THRESHOLD_DB }

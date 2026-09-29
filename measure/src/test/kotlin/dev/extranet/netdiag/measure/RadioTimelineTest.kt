@@ -98,11 +98,13 @@ class RadioTimelineTest {
 
         val summary = ring.summary()
         assertEquals(3, summary.samples)
-        assertEquals(2, summary.withRsrp)
+        // Only the first sample carries an RSRP: the second was built with rsrp = null and
+        // the third has every field null.
+        assertEquals(1, summary.withRsrp)
         assertEquals(1, summary.withHeading)
         assertEquals(1, summary.withTimingAdvance)
         assertEquals(1, summary.withEvents)
-        assertTrue(summary.rsrpCoverage > 0.66 && summary.rsrpCoverage < 0.67)
+        assertEquals(1.0 / 3.0, summary.rsrpCoverage, 0.0001)
     }
 
     @Test
