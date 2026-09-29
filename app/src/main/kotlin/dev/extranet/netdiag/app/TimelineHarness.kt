@@ -57,7 +57,7 @@ public class TimelineSession(
     public fun twoHopVerdict(): TwoHopProbe.Verdict {
         val probe = TwoHopProbe()
         val gateway = gatewayAddress() ?: TwoHopProbe.discoverGatewayAddress()
-        return probe.probe(gateway = gateway, internetHost = INTERNET_PROBE_HOST)
+        return probe.probe(gatewayAddress = gateway, internetHost = INTERNET_PROBE_HOST)
     }
 
     /** The mini-throughput reality check. */

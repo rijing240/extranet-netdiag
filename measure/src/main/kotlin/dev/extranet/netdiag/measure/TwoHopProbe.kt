@@ -1,5 +1,6 @@
 package dev.extranet.netdiag.measure
 
+import dev.extranet.netdiag.core.ledger.MeasurementBudget
 import dev.extranet.netdiag.core.ledger.TimelineBudget
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -65,13 +66,13 @@ public class TwoHopProbe(
     public fun probe(
         gatewayAddress: InetAddress?,
         internetHost: String,
-        internetPort: Int = TimelineBudget.let { 443 },
+        internetPort: Int = MeasurementBudget.HTTPS_PORT,
         rounds: Int = TimelineBudget.TWO_HOP_ROUNDS,
     ): Verdict {
-        val gatewayResults = (1..rounds).map { round ->
+        val gatewayResults = (1..rounds).map { _ ->
             probeHop(gatewayAddress?.hostAddress ?: "gateway unknown", gatewayAddress, TimelineBudget.GATEWAY_PROBE_TIMEOUT_MILLIS)
         }
-        val internetResults = (1..rounds).map { round ->
+        val internetResults = (1..rounds).map { _ ->
             probeHop(internetHost, resolve(internetHost), TimelineBudget.INTERNET_PROBE_TIMEOUT_MILLIS, internetPort)
         }
 
