@@ -4,13 +4,18 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,26 +24,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
- * S6 Presentation, B0 and B1 slices.
+ * S6 Presentation, B0 and B1 slices, set in the editorial design language.
  *
- * Two screens behind a selector because there are exactly two deliverables so far. The latency
- * waterfall as a flame graph, the forecast timeline and the relative capacity index arrive in
- * B11, once there is data worth drawing; what is here is the raw evidence those will be drawn
- * from.
+ * The wordmark and tab row behave like the reference site's nav: fixed, hairline-separated,
+ * mono upper-case labels. Screens are the content below the rule.
  */
 public class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme {
-                Surface {
+            EditorialTheme {
+                Surface(color = Editorial.Paper) {
                     NetDiagApp()
                 }
             }
@@ -47,33 +51,77 @@ public class MainActivity : ComponentActivity() {
 }
 
 /** The screens built so far, in the order the batches produced them. */
-private enum class Screen(val title: String) {
-    CAPABILITY("Capability (B0)"),
-    WATERFALL("Waterfall (B1)"),
+private enum class Screen(val tab: String) {
+    CAPABILITY("Probe"),
+    WATERFALL("Waterfall"),
 }
 
 @Composable
 private fun NetDiagApp() {
     var current by remember { mutableStateOf(Screen.CAPABILITY) }
 
-    Column {
-        Row(
-            modifier = Modifier.padding(start = 16.dp, top = 16.dp, end = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for (screen in Screen.entries) {
-                if (screen == current) {
-                    Button(onClick = { current = screen }) { Text(screen.title) }
-                } else {
-                    OutlinedButton(onClick = { current = screen }) { Text(screen.title) }
+    Column(Modifier.fillMaxSize()) {
+        // --- nav: wordmark + tab row, hairline underneath -------------------------------
+        Column(Modifier.fillMaxWidth().background(Editorial.Paper)) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "extranet",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = Editorial.Ink,
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "NET·DIAG",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = Editorial.Muted,
+                )
+            }
+            Row(Modifier.fillMaxWidth().height(40.dp)) {
+                for (screen in Screen.entries) {
+                    TabLabel(
+                        label = screen.tab,
+                        selected = screen == current,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .clickable { current = screen },
+                    )
                 }
             }
+            Hairline(color = Editorial.Ink)
         }
 
         when (current) {
             Screen.CAPABILITY -> ProbeRoute(Modifier.weight(1f))
             Screen.WATERFALL -> MeasurementRoute(Modifier.weight(1f))
         }
+    }
+}
+
+@Composable
+private fun TabLabel(label: String, selected: Boolean, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(top = 10.dp),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Text(
+                label.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = if (selected) Editorial.Ink else Editorial.Muted,
+            )
+        }
+        if (selected) {
+            Box(Modifier.width(28.dp).height(2.dp).background(Editorial.Ink))
+        }
+        Spacer(Modifier.height(4.dp))
     }
 }
 
