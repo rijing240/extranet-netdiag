@@ -17,9 +17,25 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("debug") {
+            // Pinned debug key, checked in: without it every CI runner signs with its own
+            // throwaway key and Android refuses to install a differently-signed APK over the
+            // previous one (INSTALL_FAILED_UPDATE_INCOMPATIBLE). The password is the standard
+            // "android" pair for a debug key; nothing here signs production.
+            storeFile = rootProject.file("keystore/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+        }
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
