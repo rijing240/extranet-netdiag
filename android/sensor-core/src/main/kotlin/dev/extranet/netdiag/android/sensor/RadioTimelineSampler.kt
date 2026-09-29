@@ -14,10 +14,8 @@ import android.telephony.TelephonyManager
 import dev.extranet.netdiag.core.ledger.TimelineBudget
 import dev.extranet.netdiag.measure.RadioSample
 import dev.extranet.netdiag.measure.RadioTimeline
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * What the platform can be asked about, one second at a time.
@@ -291,23 +289,32 @@ private fun SignalStrength.toLte(): LteSignal? = runCatching {
  */
 private object HeadingSource {
 
+    /**
+     * The most recent heading, read synchronously from a one-shot listener.
+     *
+     * A blocking CountDownLatch replaces the coroutine-timed channel read: the sampler calls
+     * this once per second on its own worker, the rotation vector usually delivers within a
+     * few milliseconds, and the latch caps the wait at 200 ms before declaring "no heading".
+     */
     fun heading(context: Context): Double? = runCatching {
         val sensorManager = context.getSystemService(android.hardware.SensorManager::class.java) ?: return null
         val sensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR) ?: return null
 
-        // One event is enough for a trend instrument; sampling the full stream belongs to the
-        // session manager, and the rotation vector is already drift-free over short windows.
-        val event = Channel<android.hardware.SensorEvent>(capacity = 1)
+        val received = java.util.concurrent.atomic.AtomicReference<android.hardware.SensorEvent>()
+        val done = java.util.concurrent.CountDownLatch(1)
         val listener = object : android.hardware.SensorEventListener {
             override fun onSensorChanged(e: android.hardware.SensorEvent) {
-                event.trySend(e)
+                received.compareAndSet(null, e)
+                done.countDown()
             }
             override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) = Unit
         }
         sensorManager.registerListener(listener, sensor, android.hardware.SensorManager.SENSOR_DELAY_FASTEST)
         try {
-            val received = withTimeoutOrNull(200) { event.receive() }
-            received?.let { rotationToDegrees(it) }
+            // One event is enough for a trend instrument; streaming belongs to the session
+            // manager. No event within the window is a real answer: no heading this second.
+            if (!done.await(200, java.util.concurrent.TimeUnit.MILLISECONDS)) null
+            else received.get()?.let { rotationToDegrees(it) }
         } finally {
             sensorManager.unregisterListener(listener)
         }
