@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 #
-# Retrieve B0's capability report from a device that is currently connected, with the app still
-# installed.
+# Retrieve a report from a device that is currently connected, with the app still installed.
+#
+# B0's capability report and B1's latency waterfall both come out this way; the report's file name
+# is the second argument.
 #
 # Two things about this are not obvious and each cost a CI cycle:
 #
@@ -20,9 +22,11 @@
 # be recovered has not produced this batch's deliverable.
 set -u
 
+# The destination defaults to the report's own name, so two reports can be pulled in turn without
+# the second overwriting the first.
 PACKAGE="${1:-dev.extranet.netdiag}"
 REPORT_NAME="${2:-capability-report.json}"
-DESTINATION="${3:-capability-report.json}"
+DESTINATION="${3:-$REPORT_NAME}"
 
 if ! command -v adb >/dev/null 2>&1; then
   echo "adb is not on PATH" >&2

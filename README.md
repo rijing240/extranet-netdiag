@@ -4,7 +4,7 @@ A network-aware Android telemetry engine: it measures what the radio is actually
 the user whose fault a slow connection is, and — once there is enough data — predicts service
 loss a few seconds before it happens.
 
-This repository is at **B0: repo skeleton and capability probe**.
+This repository is at **B1: measurement engine v1**.
 
 ## What B0 delivers
 
@@ -16,24 +16,37 @@ This repository is at **B0: repo skeleton and capability probe**.
    report of which ones are supported, which return `UNAVAILABLE`, on which API level, and what
    the device actually returned.
 
+## What B1 delivers
+
+1. The **probe engine** in `:measure`: one probe set splits a request into DNS, TCP, TLS and
+   time-to-first-byte, using JDK sockets rather than an HTTP client so the four numbers mean what
+   they say.
+2. The **latency waterfall**: nearest-rank p50/p95 per stage over a run of probe sets, plus
+   grouped failure modes, so a fault can be attributed to a layer instead of to "the network".
+3. B1's **exit criterion, computed rather than eyeballed**: 100 sets attempted, under a 5%
+   failure rate, and not cut short by the wall-clock cap. A truncated run cannot claim it.
+4. The **platform's own verdict** alongside ours, from `ConnectivityDiagnosticsManager`, including
+   a suspected data stall if the OS saw one.
+
 ## System map
 
 | ID | System | Module | Status |
 |----|--------|--------|--------|
 | S1 | Sensor Core — radio timeline, GNSS, context, sessions | `:android:sensor-core` | boundary + `SampleBudget` |
-| S2 | Measurement Engine — probes, bufferbloat, capability detection | `:probe`, `:android:measurement` | capability probe complete |
+| S2 | Measurement Engine — probes, bufferbloat, capability detection | `:probe`, `:measure`, `:android:measurement` | capability probe + probe engine complete |
 | S3 | Inference — features, labelling, training, scoring | `:android:inference` | seam only (B8/B9) |
 | S4 | Decision SDK — `NetworkConfidence`, offline tripwire | `:android:decision-sdk` | seam only (B10) |
 | S5 | Collective — ingest, Capacity Atlas | `collective/` (not yet created) | not started (B6/B7) |
-| S6 | Presentation — waterfall, forecast, relative index | `:app` | probe screen only (B11) |
+| S6 | Presentation — waterfall, forecast, relative index | `:app` | probe and waterfall screens (B11 for the graph) |
 | S7 | Capability Registry — per-model availability | `:probe` (`SupportMatrix`) | aggregation complete |
 | X1 | Privacy / Consent | `:core` (`privacy`, `report`) | geohash + cell key hashing |
 | X2 | Budget Guard | `:android:sensor-core` (`SampleBudget`) | complete for B0 |
-| X3 | Test Harness | all modules + `tools/` | ledger verifier + device test |
+| X3 | Test Harness | all modules + `tools/` | ledger verifier + device tests |
 
-`:core` and `:probe` are pure Kotlin/JVM with no Android dependency, which is what makes the
-ledger, the classification rules and the report serialization testable on a machine with no
-handset and no radio. `:android:measurement` supplies the only platform-facing implementation.
+`:core`, `:probe` and `:measure` are pure Kotlin/JVM with no Android dependency, which is what
+makes the ledger, the classification rules, the waterfall and its statistics testable on a
+machine with no handset and no radio. `:android:measurement` supplies the only platform-facing
+implementations: the capability probe, the live session, and the active network's resolver.
 
 ## The ledger is the point
 
@@ -47,7 +60,7 @@ It has already paid for itself: it caught two incorrectly transcribed Shannon-Ha
 (the −5 dB one was 9,600 bps off) before they could propagate into the capacity index.
 
 ```bash
-python3 tools/verify_ledger.py     # 59 constants, 2 geohash vectors
+python3 tools/verify_ledger.py     # 72 constants, 2 geohash vectors
 ```
 
 ## Building
@@ -61,9 +74,9 @@ gradle wrapper        # then use ./gradlew
 or invoke Gradle directly:
 
 ```bash
-gradle :core:test :probe:test              # pure JVM kernel
+gradle :core:test :probe:test :measure:test   # pure JVM kernel
 gradle :android:sensor-core:testDebugUnitTest
-gradle :app:assembleDebug                  # needs the Android SDK
+gradle :app:assembleDebug                     # needs the Android SDK
 ```
 
 CI provisions Gradle 8.11.1 itself, so no wrapper is required to get a green build.
@@ -82,6 +95,16 @@ gradle :app:connectedDebugAndroidTest
 adb pull /sdcard/Android/data/dev.extranet.netdiag/files/capability-report.json
 ```
 
+Pull before anything uninstalls the app: `connectedDebugAndroidTest` uninstalls it when it
+finishes, and the report goes with it. `tools/pull-device-report.sh` reads both reports out of
+internal storage, which is the only path that works from API 30 onwards.
+
+## Running the probe engine
+
+Launch the app and switch to *Waterfall (B1)*, then press *Run 100 sets*. It writes
+`probe-waterfall.json` next to the capability report: per-stage p50/p95, the failure modes, the
+verdict, and the platform's own connectivity report. See `docs/probe-engine.md`.
+
 ## Privacy rule
 
 Raw per-second detail never leaves the device. Uplinks carry ~25 kB session summaries keyed by a
@@ -92,4 +115,5 @@ at least five independent observations back it. See `docs/architecture.md`.
 
 - `docs/architecture.md` — systems, layers, data flow, module boundaries.
 - `docs/calculation-ledger.md` — every constant, its derivation, and the plan discrepancies.
+- `docs/probe-engine.md` — the four stages, the statistics, the exit criterion, and how to run it.
 - `docs/b0-device-run.md` — how to obtain the device report and what has and has not been run.

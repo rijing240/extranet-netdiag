@@ -30,6 +30,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":probe"))
+    implementation(project(":measure"))
     implementation(project(":android:sensor-core"))
 
     testImplementation(libs.kotlin.test.junit)

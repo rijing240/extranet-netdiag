@@ -81,6 +81,24 @@ GNSS_BURST_SECONDS = 30
 SESSION_COMPRESSED_BYTES = 25_000
 DAU = 10_000
 
+# B1's probe budget. The gate and the cap are the pair worth re-deriving: the criterion asks for
+# 100 sets, and the cap has to be large enough that a merely slow network still finishes them
+# while a dead one is cut off in minutes rather than hours.
+PROBE_SETS_PER_RUN = 100
+PROBE_FAILURE_CEILING = 0.05
+PROBE_TYPICAL_SET_MS = 1_000
+PROBE_WALL_CLOCK_CAP_MS = PROBE_SETS_PER_RUN * PROBE_TYPICAL_SET_MS * 2
+DNS_TIMEOUT_MS = 2_000
+TCP_TIMEOUT_MS = 3_000
+TLS_TIMEOUT_MS = 3_000
+TTFB_TIMEOUT_MS = 5_000
+OS_DIAGNOSTICS_WAIT_MS = 3_000
+DNS_PORT = 53
+HTTPS_PORT = 443
+PERCENTILE_P50 = 0.50
+PERCENTILE_P95 = 0.95
+PROBE_WORST_CASE_SET_MS = DNS_TIMEOUT_MS + TCP_TIMEOUT_MS + TLS_TIMEOUT_MS + TTFB_TIMEOUT_MS
+
 # ---------------------------------------------------------------------------------------
 # Kotlin source extraction
 # ---------------------------------------------------------------------------------------
@@ -283,6 +301,20 @@ def main() -> int:
     r.check("HOUR_BUCKETS", 24, "HOUR_BUCKETS", 0)
     r.check("CELL_KEY_HEX_LENGTH", 16, "CELL_KEY_HEX_LENGTH", 0)
 
+    r.check("SETS_PER_RUN", PROBE_SETS_PER_RUN, "SETS_PER_RUN", 0)
+    r.check("FAILURE_RATE_CEILING", PROBE_FAILURE_CEILING, "FAILURE_RATE_CEILING", 1e-12)
+    r.check("TYPICAL_SET_MILLIS", PROBE_TYPICAL_SET_MS, "TYPICAL_SET_MILLIS", 0)
+    r.check("WALL_CLOCK_CAP_MILLIS", PROBE_WALL_CLOCK_CAP_MS, "WALL_CLOCK_CAP_MILLIS", 0)
+    r.check("DNS_TIMEOUT_MILLIS", DNS_TIMEOUT_MS, "DNS_TIMEOUT_MILLIS", 0)
+    r.check("TCP_TIMEOUT_MILLIS", TCP_TIMEOUT_MS, "TCP_TIMEOUT_MILLIS", 0)
+    r.check("TLS_TIMEOUT_MILLIS", TLS_TIMEOUT_MS, "TLS_TIMEOUT_MILLIS", 0)
+    r.check("TTFB_TIMEOUT_MILLIS", TTFB_TIMEOUT_MS, "TTFB_TIMEOUT_MILLIS", 0)
+    r.check("OS_DIAGNOSTICS_WAIT_MILLIS", OS_DIAGNOSTICS_WAIT_MS, "OS_DIAGNOSTICS_WAIT_MILLIS", 0)
+    r.check("DNS_PORT", DNS_PORT, "DNS_PORT", 0)
+    r.check("HTTPS_PORT", HTTPS_PORT, "HTTPS_PORT", 0)
+    r.check("PERCENTILE_P50", PERCENTILE_P50, "PERCENTILE_P50", 1e-12)
+    r.check("PERCENTILE_P95", PERCENTILE_P95, "PERCENTILE_P95", 1e-12)
+
     rc = r.emit()
 
     # String constants cannot be numerically cross-checked, so assert them verbatim.
@@ -323,6 +355,15 @@ def main() -> int:
     print(f"  single-device hours                   {SINGLE_DEVICE_HOURS:>18,.1f}  (plan: 320 h)")
     print(f"  fleet days, 200 users x 60 min/day    {FLEET_DAYS:>18.2f}  (plan: ~2 days)")
     print(f"  bufferbloat payload, 5 Mbps x 15 s    {payload_5mbps_15s:>18,.0f}  (plan: <=10 MB)")
+
+    sets_in_cap = PROBE_WALL_CLOCK_CAP_MS // PROBE_WORST_CASE_SET_MS
+    print()
+    print("probe engine budget (B1):")
+    print(f"  probe sets per run                    {PROBE_SETS_PER_RUN:>18,}  (exit criterion)")
+    print(f"  failure rate ceiling                  {PROBE_FAILURE_CEILING:>18}  (5%, exclusive)")
+    print(f"  worst case for one set, ms            {PROBE_WORST_CASE_SET_MS:>18,}  (four stage budgets)")
+    print(f"  wall clock cap, ms                    {PROBE_WALL_CLOCK_CAP_MS:>18,}  (2 x sets x typical)")
+    print(f"  sets finishable if every stage times out {sets_in_cap:>14,}  (then the run is truncated)")
 
     print()
     print("plan discrepancies found (documented in docs/calculation-ledger.md):")

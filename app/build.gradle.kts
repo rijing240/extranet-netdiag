@@ -46,6 +46,7 @@ android {
 dependencies {
     implementation(project(":core"))
     implementation(project(":probe"))
+    implementation(project(":measure"))
     implementation(project(":android:sensor-core"))
     implementation(project(":android:measurement"))
     implementation(project(":android:inference"))

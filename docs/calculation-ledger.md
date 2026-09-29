@@ -140,6 +140,24 @@ Cell keys are `SHA-256(salt ‖ geohash ‖ earfcn ‖ pci ‖ tac)` truncated t
 with a `0x1F` field separator so `("a","bc")` and `("ab","c")` cannot collide. Verified against
 an independently computed vector in `PrivacyTest`.
 
+## Probe engine budget (B1, `MeasurementBudget`)
+
+| Parameter | Value | Why this number |
+|---|---|---|
+| Probe sets per run | 100 | B1's exit criterion |
+| Failure-rate ceiling | 0.05, exclusive | allows sporadic packet loss, not a stage that is broken on every set |
+| Typical set | 1,000 ms | a healthy four-stage set is ~150 ms; this is the budgeting figure, not a measurement |
+| Wall-clock cap | 200,000 ms | twice the typical budget for a full run, so a merely slow network still finishes |
+| DNS / TCP / TLS / TTFB budgets | 2,000 / 3,000 / 3,000 / 5,000 ms | per-stage, so one dead stage cannot consume the run |
+| Platform report wait | 3,000 ms | how long the OS gets to deliver its connectivity report |
+| DNS / HTTPS ports | 53 / 443 | the ports the probe actually opens |
+| Percentiles reported | p50, p95 | nearest rank, never interpolated |
+
+The cap and the criterion are in tension, and the arithmetic is pinned so nobody has to
+rediscover it: a set's worst case is 13,000 ms, so a run in which every stage of every set times
+out can only finish **15** of the 100 sets before the cap stops it. That is deliberate — the
+report then says it was truncated, and a truncated run is not allowed to claim the criterion.
+
 ## Discrepancies found in the approved plan
 
 Recorded rather than silently absorbed. None of them changes a decision; two of them changed a

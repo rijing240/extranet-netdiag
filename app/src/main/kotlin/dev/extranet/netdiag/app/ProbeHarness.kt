@@ -87,24 +87,13 @@ public object ProbeHarness {
             notes = notes,
         )
         val json = report.toJson()
-
-        // Two copies, deliberately. The internal one is what CI can actually retrieve; the
-        // external one is what a human can find on the device with a file manager. Writing only
-        // the external copy silently loses B0's deliverable on any modern Android.
-        val internalFile = File(appContext.filesDir, REPORT_FILE_NAME)
-        internalFile.writeText(json)
-
-        val directory = outputDirectory ?: appContext.getExternalFilesDir(null)
-        val externalFile = directory?.let { File(it, REPORT_FILE_NAME) }?.also { file ->
-            file.parentFile?.mkdirs()
-            file.writeText(json)
-        }
+        val written = ReportFiles.write(appContext, REPORT_FILE_NAME, json, outputDirectory)
 
         ProbeUiState.Done(
             report = report,
             json = json,
-            reportPath = internalFile.absolutePath,
-            externalReportPath = externalFile?.absolutePath,
+            reportPath = written.path,
+            externalReportPath = written.externalPath,
             asyncObserved = asyncOutcomes.size,
         )
     } catch (throwable: Throwable) {
