@@ -1,20 +1,17 @@
 package dev.extranet.netdiag.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,14 +25,14 @@ import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.measure.MiniThroughputProbe
 import dev.extranet.netdiag.measure.RadioSample
 import dev.extranet.netdiag.measure.RadioTimeline
-import dev.extranet.netdiag.measure.SignalCompass
 import dev.extranet.netdiag.measure.TwoHopProbe
 
 /**
  * The TIMELINE tab: B2's live radio dashboard, signal compass, session log and reality check.
  *
- * The design language is the same as the other tabs; the new element is the gauge, drawn with
- * a Canvas rather than a progress ring so the needle reads like an instrument, not a spinner.
+ * One scroll of cards rather than a hero with a ruled list under it: the header and the action
+ * row scroll away with the content, and each reading gets its own block. The gauges are drawn
+ * with a Canvas rather than a progress ring so the needle reads like an instrument, not a spinner.
  */
 @Composable
 public fun TimelineScreen(
@@ -44,62 +41,66 @@ public fun TimelineScreen(
     onShareCsv: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize()) {
-        HeroBand(
-            eyebrow = "B2 - radio timeline",
-            title = "The truth gauges.",
-            subtitle = "One-second samples of what the antenna actually says - signal, noise, tower distance, direction.",
-        )
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            SectionHeader(
+                eyebrow = "B2 - radio timeline",
+                title = "The truth gauges.",
+                subtitle = "One-second samples of what the antenna actually says - " +
+                    "signal, noise, tower distance, direction.",
+            )
+        }
 
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("Sample 60 s", onClick = { onRun(60_000L) }, modifier = Modifier.weight(1f))
-                LineButton(
-                    "Share CSV",
-                    onClick = { (state as? TimelineUiState.Done)?.let { onShareCsv(it.csv) } },
-                    modifier = Modifier.weight(1f),
-                    enabled = state is TimelineUiState.Done,
-                )
+        item {
+            SectionCard {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InkButton(
+                        "Sample 60 s",
+                        onClick = { onRun(60_000L) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    LineButton(
+                        "Share CSV",
+                        onClick = { (state as? TimelineUiState.Done)?.let { onShareCsv(it.csv) } },
+                        modifier = Modifier.weight(1f),
+                        enabled = state is TimelineUiState.Done,
+                    )
+                }
             }
-            Spacer(Modifier.height(14.dp))
         }
 
         when (state) {
-            TimelineUiState.Idle -> IdleNote()
-            is TimelineUiState.Sampling -> SamplingNote(state.secondsElapsed)
-            is TimelineUiState.Failed -> FailedNote(state.message)
-            is TimelineUiState.Done -> SessionBody(state)
+            TimelineUiState.Idle -> item { SectionCard { IdleNote() } }
+            is TimelineUiState.Sampling -> item { SectionCard { SamplingNote(state.secondsElapsed) } }
+            is TimelineUiState.Failed -> item { SectionCard { FailedNote(state.message) } }
+            is TimelineUiState.Done -> sessionItems(state)
         }
     }
 }
 
 @Composable
 private fun IdleNote() {
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Hairline()
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "No session yet. A session samples the radio once a second, watches for network " +
-                "transitions, then offers the log as CSV and reads the compass over what it saw.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Editorial.InkSoft,
-        )
-    }
+    Text(
+        "No session yet. A session samples the radio once a second, watches for network " +
+            "transitions, then offers the log as CSV and reads the compass over what it saw.",
+        style = MaterialTheme.typography.bodySmall,
+        color = Editorial.InkSoft,
+    )
 }
 
 @Composable
 private fun SamplingNote(secondsElapsed: Int) {
-    Row(
-        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(
             Modifier.size(16.dp),
             color = Editorial.Ink,
             strokeWidth = 2.dp,
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.size(12.dp))
         Text(
             "SAMPLING - $secondsElapsed s",
             style = MaterialTheme.typography.labelMedium,
@@ -110,98 +111,77 @@ private fun SamplingNote(secondsElapsed: Int) {
 
 @Composable
 private fun FailedNote(message: String) {
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Hairline()
-        Spacer(Modifier.height(12.dp))
+    Column {
         Text(
             "SESSION FAILED",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.error,
         )
+        Spacer(Modifier.height(4.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = Editorial.InkSoft)
     }
 }
 
-// Declared on ColumnScope so the log can take the remaining height with weight(1f).
-@Composable
-private fun ColumnScope.SessionBody(state: TimelineUiState.Done) {
+/** The session's readings, one card each, appended to the scroll. */
+private fun LazyListScope.sessionItems(state: TimelineUiState.Done) {
     val summary = state.summary
-    LazyColumn(Modifier.weight(1f)) {
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(4.dp))
+
+    item {
+        SectionCard {
+            Text(
+                "${summary.samples} samples logged",
+                style = MaterialTheme.typography.displaySmall,
+                color = Editorial.Green,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                fieldCoverageLine(summary),
+                style = MaterialTheme.typography.labelMedium,
+                color = Editorial.Muted,
+            )
+        }
+    }
+
+    item {
+        SectionCard(eyebrow = "latest reading") {
+            val latest = state.timeline.snapshot().lastOrNull()
+            if (latest == null) {
                 Text(
-                    "${summary.samples} samples logged",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = Editorial.Green,
+                    "No sample carried a reading.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Editorial.InkSoft,
                 )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    fieldCoverageLine(summary),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Editorial.Muted,
-                )
-                Spacer(Modifier.height(12.dp))
+            } else {
+                GaugeRow(latest)
             }
         }
+    }
 
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Eyebrow("latest reading")
-                Spacer(Modifier.height(8.dp))
-                state.timeline.snapshot().lastOrNull()?.let { GaugeRow(it) }
-                Spacer(Modifier.height(12.dp))
-                Hairline()
-            }
+    item {
+        SectionCard(eyebrow = "signal compass") {
+            Text(
+                state.compass.statement(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (state.compass.bestSector != null) Editorial.Green else Editorial.InkSoft,
+            )
         }
+    }
 
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(12.dp))
-                Eyebrow("signal compass")
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    state.compass.statement(),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (state.compass.bestSector != null) Editorial.Green else Editorial.InkSoft,
-                )
-                Spacer(Modifier.height(10.dp))
-                Hairline()
-            }
+    item {
+        SectionCard(eyebrow = "who is to blame") {
+            BlameSection(state.blame)
         }
+    }
 
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(12.dp))
-                Eyebrow("who is to blame")
-                Spacer(Modifier.height(6.dp))
-                BlameSection(state.blame)
-                Spacer(Modifier.height(10.dp))
-                Hairline()
-            }
+    item {
+        SectionCard(eyebrow = "reality check - can data move") {
+            ThroughputSection(state.throughput)
         }
+    }
 
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(12.dp))
-                Eyebrow("reality check - can data move")
-                Spacer(Modifier.height(6.dp))
-                ThroughputSection(state.throughput)
-                Spacer(Modifier.height(10.dp))
-                Hairline()
-            }
-        }
-
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Spacer(Modifier.height(12.dp))
-                Eyebrow("network transitions")
-                Spacer(Modifier.height(6.dp))
-                TransitionSection(state.timeline)
-                Spacer(Modifier.height(10.dp))
-                Hairline()
-                Spacer(Modifier.height(24.dp))
-            }
+    item {
+        SectionCard(eyebrow = "network transitions") {
+            TransitionSection(state.timeline)
         }
     }
 }
@@ -297,7 +277,11 @@ private fun BlameSection(verdict: TwoHopProbe.Verdict?) {
             Text(
                 verdict.statement(),
                 style = MaterialTheme.typography.bodyMedium,
-                color = if (verdict.gateway.reachable && verdict.internet.reachable) Editorial.Green else Editorial.Ink,
+                color = if (verdict.gateway.reachable && verdict.internet.reachable) {
+                    Editorial.Green
+                } else {
+                    Editorial.Ink
+                },
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -327,7 +311,8 @@ private fun ThroughputSection(result: MiniThroughputProbe.Result?) {
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "moved ${result.bytesMoved} B in ${result.transferMillis} ms   ping ${result.pingMedianMillis ?: "-"} ms",
+                "moved ${result.bytesMoved} B in ${result.transferMillis} ms   " +
+                    "ping ${result.pingMedianMillis ?: "-"} ms",
                 style = MaterialTheme.typography.labelSmall,
                 fontFamily = FontFamily.Monospace,
                 color = Editorial.InkSoft,

@@ -1,33 +1,23 @@
 package dev.extranet.netdiag.app
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,10 +25,12 @@ import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.core.report.SupportStatus
 
 /**
- * The editorial primitives shared by every screen.
+ * The editorial primitives shared by every screen, composed the way an app composes them.
  *
- * Each one mirrors a rule from the reference CSS: hairline rules instead of shadows, square
- * corners, mono upper-case labels with wide tracking, and the pink stitch as the only flourish.
+ * Each one still mirrors a rule from the reference CSS - hairline rules instead of shadows, mono
+ * upper-case labels with wide tracking, the pink stitch as the only flourish - but the unit of
+ * composition is now the card rather than the ruled page: SectionHeader opens a screen, SectionCard
+ * holds each group of readings, and the buttons are sized for a thumb rather than a mouse.
  */
 
 /** The `.eyebrow`: mono, small, upper case, muted, wide-tracked. */
@@ -69,40 +61,55 @@ public fun StitchLine(modifier: Modifier = Modifier) {
     }
 }
 
-/** Primary button: solid black, square, mono upper case. */
+/** Primary button: solid black, rounded, mono upper case, 48 dp tall for a thumb. */
 @Composable
 public fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
         onClick = onClick,
         enabled = enabled,
-        shape = Editorial.Shape,
+        shape = Editorial.ButtonShape,
+        // Buttons sit three across on the probe screen, so the default 24 dp side padding would
+        // push "LIVE 8 S" onto a second line inside a bar whose height is fixed at 48 dp.
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = Editorial.Ink,
             contentColor = Editorial.Paper,
-            disabledContainerColor = Editorial.Paper,
+            disabledContainerColor = Editorial.Hairline,
             disabledContentColor = Editorial.Muted,
         ),
-        modifier = modifier,
+        modifier = modifier.height(48.dp),
     ) {
-        Text(text.uppercase(), style = MaterialTheme.typography.labelLarge)
+        Text(
+            text.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
-/** Secondary button: bone background, 1 px black border, square. */
+/** Secondary button: paper background, 1 px black border, rounded, 48 dp tall. */
 @Composable
 public fun LineButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
-        shape = Editorial.Shape,
+        shape = Editorial.ButtonShape,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = Editorial.Ink,
+            disabledContainerColor = Editorial.Paper,
             disabledContentColor = Editorial.Muted,
         ),
         border = androidx.compose.foundation.BorderStroke(1.dp, if (enabled) Editorial.Ink else Editorial.Hairline),
-        modifier = modifier,
+        modifier = modifier.height(48.dp),
     ) {
-        Text(text.uppercase(), style = MaterialTheme.typography.labelLarge)
+        Text(
+            text.uppercase(),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -129,114 +136,68 @@ public fun StatusTag(status: SupportStatus, modifier: Modifier = Modifier) {
 }
 
 /**
- * The hero band: solid black, white type, content anchored to the bottom like the reference hero.
+ * The screen header: eyebrow, headline, optional standfirst, closed by the pink stitch.
  *
- * Used sparingly: one per screen, it is the black block that makes the language readable at a
- * glance on a phone.
+ * Replaces the site's full-bleed hero. A hero is a page's opening statement pinned to the top
+ * of a document; an app's opening statement belongs to the scroll, so this is set on the bone
+ * canvas rather than on a black band and it moves away with the content.
  */
 @Composable
-public fun HeroBand(
+public fun SectionHeader(
     eyebrow: String,
     title: String,
     subtitle: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(Editorial.Ink)
-            .padding(horizontal = 20.dp, vertical = 28.dp),
-    ) {
-        Eyebrow(eyebrow, color = Editorial.Paper.copy(alpha = 0.45f))
-        Spacer(Modifier.height(8.dp))
+    Column(modifier.fillMaxWidth()) {
+        // The hero set this in translucent paper on black, where it sat at roughly 4.3:1; on
+        // bone the same role needs a real tone, so it takes InkMid to keep that contrast.
+        Eyebrow(eyebrow, color = Editorial.InkMid)
+        Spacer(Modifier.height(6.dp))
         Text(
             title,
             style = MaterialTheme.typography.displaySmall,
-            color = Editorial.Paper,
+            color = Editorial.Ink,
         )
         if (subtitle != null) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Editorial.Paper.copy(alpha = 0.7f),
+                color = Editorial.InkSoft,
             )
         }
+        Spacer(Modifier.height(10.dp))
+        StitchLine()
     }
 }
 
 /**
- * The marquee: a slow mono ticker of capability words between two hairlines.
+ * A section of the screen, drawn as one touchable block: paper on bone, 16 dp radius, one hairline
+ * for an edge instead of a shadow.
  *
- * On the reference it is the wink that makes the page feel alive; here it carries the names of
- * what the app actually measures. Animation is a single infinite translation, cheap on the GPU,
- * and it stops mattering entirely on a screen readers cannot see.
+ * This is the unit the whole app is composed from. Where the site separated content with a full
+ * width rule, the app groups it into a card, so related readings sit together and unrelated ones
+ * are visibly apart.
  */
 @Composable
-public fun Marquee(words: List<String>, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "marquee")
-    val offset by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = -1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 25_000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "marquee-offset",
-    )
-    val row = @Composable { text: String ->
-        Text(
-            text,
-            style = MaterialTheme.typography.labelLarge,
-            color = Editorial.Ink,
-            modifier = Modifier.padding(horizontal = 20.dp),
-        )
-    }
-    Column(modifier.fillMaxWidth()) {
-        Hairline()
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(40.dp),
-            contentAlignment = Alignment.CenterStart,
-        ) {
-            Row(
-                Modifier
-                    .horizontalScroll(rememberScrollState(), enabled = false)
-                    .padding(start = (-offset * 600).dp),
-            ) {
-                words.forEach { row(it) }
-                words.forEach { row(it) }
-            }
-        }
-        Hairline()
-    }
-}
-
-/** A numbered row, the `.craft-row`: big grey number, title, description under a hairline. */
-@Composable
-public fun CraftRow(
-    number: String,
-    title: String,
-    subtitle: @Composable () -> Unit,
+public fun SectionCard(
     modifier: Modifier = Modifier,
+    eyebrow: String? = null,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(modifier.fillMaxWidth().padding(vertical = 12.dp)) {
-        Row(verticalAlignment = Alignment.Top) {
-            Text(
-                number,
-                style = MaterialTheme.typography.labelLarge,
-                color = Editorial.Muted,
-                modifier = Modifier.width(44.dp),
-            )
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(2.dp))
-                subtitle()
-            }
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(Editorial.Paper, Editorial.CardShape)
+            .border(1.dp, Editorial.Hairline, Editorial.CardShape)
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+    ) {
+        if (eyebrow != null) {
+            Eyebrow(eyebrow)
+            Spacer(Modifier.height(10.dp))
         }
-        Spacer(Modifier.height(10.dp))
-        Hairline()
+        content()
     }
 }
 
@@ -250,20 +211,5 @@ public fun MonoMeta(text: String, modifier: Modifier = Modifier, color: Color = 
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier,
-    )
-}
-
-/** Thin bordered container used where the reference uses `.pricing-tier` borders. */
-@Composable
-public fun BorderedColumn(
-    modifier: Modifier = Modifier,
-    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
-) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .border(1.dp, Editorial.Hairline)
-            .padding(16.dp),
-        content = content,
     )
 }

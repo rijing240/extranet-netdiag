@@ -1,10 +1,8 @@
 package dev.extranet.netdiag.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -29,9 +27,10 @@ import dev.extranet.netdiag.core.report.SupportStatus
 /**
  * B0's exit-criterion surface, in the editorial language.
  *
- * The hero band states the question; the findings list reads like the reference site's craft
- * rows: one hairline-separated line per capability, mono id, quiet status, the observation or
- * the explanation beneath. Density stays deliberately high - the report is the product here.
+ * The header states the question; the findings live in one card that reads like the reference
+ * site's craft rows: one hairline-separated line per capability, mono id, quiet status, the
+ * observation or the explanation beneath. Density stays deliberately high - the report is the
+ * product here - but the whole thing scrolls as cards rather than as a ruled page.
  */
 @Composable
 public fun CapabilityProbeScreen(
@@ -41,57 +40,56 @@ public fun CapabilityProbeScreen(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier.fillMaxSize()) {
-        HeroBand(
-            eyebrow = "B0 - platform probe",
-            title = "What can this handset do?",
-            subtitle = "Seventy platform capabilities, asked and answered on the device.",
-        )
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            SectionHeader(
+                eyebrow = "B0 - platform probe",
+                title = "What can this handset do?",
+                subtitle = "Seventy platform capabilities, asked and answered on the device.",
+            )
+        }
 
-        Column(Modifier.padding(horizontal = 20.dp)) {
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InkButton("Run", onClick = onRunSync, modifier = Modifier.weight(1f))
-                LineButton("Live 8 s", onClick = onRunLive, modifier = Modifier.weight(1f))
-                LineButton(
-                    "Share",
-                    onClick = onShare,
-                    modifier = Modifier.weight(1f),
-                    enabled = state is ProbeUiState.Done,
-                )
+        item {
+            SectionCard {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    InkButton("Run", onClick = onRunSync, modifier = Modifier.weight(1f))
+                    LineButton("Live 8 s", onClick = onRunLive, modifier = Modifier.weight(1f))
+                    LineButton(
+                        "Share",
+                        onClick = onShare,
+                        modifier = Modifier.weight(1f),
+                        enabled = state is ProbeUiState.Done,
+                    )
+                }
             }
-            Spacer(Modifier.height(14.dp))
         }
 
         when (state) {
-            ProbeUiState.Idle -> IdleNote()
-            is ProbeUiState.Running -> RunningNote(state.note)
-            is ProbeUiState.Failed -> FailedNote(state.message)
-            is ProbeUiState.Done -> ReportBody(state)
+            ProbeUiState.Idle -> item { SectionCard { IdleNote() } }
+            is ProbeUiState.Running -> item { SectionCard { RunningNote(state.note) } }
+            is ProbeUiState.Failed -> item { SectionCard { FailedNote(state.message) } }
+            is ProbeUiState.Done -> reportItems(state)
         }
     }
 }
 
 @Composable
 private fun IdleNote() {
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Hairline()
-        Spacer(Modifier.height(12.dp))
-        Text(
-            "No run yet. RUN performs the synchronous pass; LIVE 8 S also listens for GNSS " +
-                "measurements, telephony callbacks and network transitions.",
-            style = MaterialTheme.typography.bodySmall,
-            color = Editorial.InkSoft,
-        )
-    }
+    Text(
+        "No run yet. RUN performs the synchronous pass; LIVE 8 S also listens for GNSS " +
+            "measurements, telephony callbacks and network transitions.",
+        style = MaterialTheme.typography.bodySmall,
+        color = Editorial.InkSoft,
+    )
 }
 
 @Composable
 private fun RunningNote(note: String) {
-    Row(
-        Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         CircularProgressIndicator(
             Modifier.width(16.dp).height(16.dp),
             color = Editorial.Ink,
@@ -104,9 +102,7 @@ private fun RunningNote(note: String) {
 
 @Composable
 private fun FailedNote(message: String) {
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Hairline()
-        Spacer(Modifier.height(12.dp))
+    Column {
         Text(
             "HARNESS FAILED",
             style = MaterialTheme.typography.labelMedium,
@@ -120,59 +116,58 @@ private fun FailedNote(message: String) {
     }
 }
 
-// Declared on ColumnScope so the findings list can take the remaining height with weight(1f).
-@Composable
-private fun ColumnScope.ReportBody(state: ProbeUiState.Done) {
+/** The completed report, one card for the headline and one for the findings themselves. */
+private fun LazyListScope.reportItems(state: ProbeUiState.Done) {
     val report = state.report
-    Column(Modifier.padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(4.dp))
-        // The headline number, set like the reference pricing: big mono figure in green.
-        Text(
-            "${report.supportedCount()}/70 supported",
-            style = MaterialTheme.typography.displaySmall,
-            color = Editorial.Green,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            statusCountsLine(report),
-            style = MaterialTheme.typography.labelMedium,
-            color = Editorial.Muted,
-        )
-        if (state.asyncObserved == 0) {
-            Spacer(Modifier.height(4.dp))
-            Text(
-                "No asynchronous spec was observed; those rows are NOT_PROBED, not failures.",
-                style = MaterialTheme.typography.bodySmall,
-                color = Editorial.InkSoft,
-            )
-        }
-        Spacer(Modifier.height(10.dp))
-    }
 
-    LazyColumn(Modifier.weight(1f)) {
-        items(report.findings, key = { it.id }) { finding ->
-            FindingRow(finding)
-        }
-        item {
-            Spacer(Modifier.height(8.dp))
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                Eyebrow("report files")
-                Spacer(Modifier.height(6.dp))
+    item {
+        SectionCard {
+            // The headline number, set like the reference pricing: big figure in green.
+            Text(
+                "${report.supportedCount()}/70 supported",
+                style = MaterialTheme.typography.displaySmall,
+                color = Editorial.Green,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                statusCountsLine(report),
+                style = MaterialTheme.typography.labelMedium,
+                color = Editorial.Muted,
+            )
+            if (state.asyncObserved == 0) {
+                Spacer(Modifier.height(4.dp))
                 Text(
-                    state.reportPath,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontFamily = FontFamily.Monospace,
+                    "No asynchronous spec was observed; those rows are NOT_PROBED, not failures.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = Editorial.InkSoft,
                 )
-                state.externalReportPath?.let { path ->
-                    Text(
-                        path,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = Editorial.Muted,
-                    )
-                }
-                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+
+    item {
+        SectionCard(eyebrow = "capability findings") {
+            for (finding in report.findings) {
+                FindingRow(finding)
+            }
+        }
+    }
+
+    item {
+        SectionCard(eyebrow = "report files") {
+            Text(
+                state.reportPath,
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = Editorial.InkSoft,
+            )
+            state.externalReportPath?.let { path ->
+                Text(
+                    path,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = Editorial.Muted,
+                )
             }
         }
     }
@@ -180,11 +175,7 @@ private fun ColumnScope.ReportBody(state: ProbeUiState.Done) {
 
 @Composable
 private fun FindingRow(finding: CapabilityFinding) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 9.dp),
-    ) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 9.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Text(
                 text = finding.id,

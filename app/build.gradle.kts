@@ -76,6 +76,9 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
+    // Bottom navigation needs real icons; material-icons-core does not carry NetworkCheck,
+    // BarChart or Timeline, so the extended set is pulled in at the compose release-train version.
+    implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     androidTestImplementation(libs.androidx.test.junit)
