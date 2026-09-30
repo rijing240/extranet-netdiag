@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.measure.RadioSample
@@ -85,7 +86,7 @@ public fun SignalRadar(
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val sectorSweep = 360f / 16f
 
-                androidx.compose.ui.graphics.drawscope.rotate(degrees = -(liveHeading?.toFloat() ?: 0f)) {
+                rotate(degrees = -(liveHeading?.toFloat() ?: 0f)) {
                     // The empty ring every sector sits on, so an unvisited direction is visibly
                     // "not looked at yet" rather than absent.
                     drawCircle(
