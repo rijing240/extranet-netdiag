@@ -59,7 +59,7 @@ class MiniThroughputProbeTest {
     @Test
     fun theBodyIsCountedExactlyEvenWithoutATrailingNewline() {
         val body = ByteArray(1_000) { ((it * 37) and 0xFF).toByte() }
-        assertEquals(1_000L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))))
+        assertEquals(1_000L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).second)
     }
 
     @Test
@@ -67,7 +67,7 @@ class MiniThroughputProbeTest {
         val body = byteArrayOf(0x00, 0x0D, 0x0A, 0x0D, 0x0A, 0x7F, 0x0D, 0x0A, 0xFF.toByte())
         assertEquals(
             body.size.toLong(),
-            MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))),
+            MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).second,
         )
     }
 
@@ -75,13 +75,21 @@ class MiniThroughputProbeTest {
     fun theHeaderIsFoundEvenWhenItArrivesOneByteAtATime() {
         val body = ByteArray(64) { it.toByte() }
         val trickle = OneByteAtATime(ByteArrayInputStream(response(body)))
-        assertEquals(64L, MiniThroughputProbe.countBodyBytes(trickle))
+        assertEquals(64L, MiniThroughputProbe.countBodyBytes(trickle).second)
     }
 
     @Test
     fun aResponseWithNoBodyCountsNothing() {
         val head = "HTTP/1.1 204 No Content\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
-        assertEquals(0L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(head)))
+        assertEquals(0L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(head)).second)
+    }
+
+    @Test
+    fun theStatusCodeIsExtractedFromTheResponseHeader() {
+        val body = ByteArray(10) { it.toByte() }
+        assertEquals(200, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).first)
+        val redirect = "HTTP/1.1 302 Found\r\nLocation: https://example.com\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
+        assertEquals(302, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(redirect)).first)
     }
 
     @Test
