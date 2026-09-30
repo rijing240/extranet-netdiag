@@ -51,13 +51,12 @@ public class TimelineSession(
     public fun compassVerdict(): SignalCompass.Verdict = SignalCompass.verdict(timeline.snapshot())
 
     /**
-     * The two-hop attribution: gateway from the active network's link properties when the
-     * platform offers one, else the routing-table guess.
+     * The two-hop attribution: the real first hop when the platform exposes one, otherwise the
+     * probe is told it has no first hop to test rather than being handed a stand-in.
      */
     public fun twoHopVerdict(): TwoHopProbe.Verdict {
         val probe = TwoHopProbe()
-        val gateway = gatewayAddress() ?: TwoHopProbe.discoverGatewayAddress()
-        return probe.probe(gatewayAddress = gateway, internetHost = INTERNET_PROBE_HOST)
+        return probe.probe(gatewayAddress = firstHopAddress(), internetHost = INTERNET_PROBE_HOST)
     }
 
     /** The mini-throughput reality check. */
@@ -66,13 +65,36 @@ public class TimelineSession(
     /** The session log as CSV, ready to share. */
     public fun exportCsv(): String = TimelineCsv.export(timeline.snapshot())
 
-    private fun gatewayAddress(): InetAddress? = runCatching {
+    /**
+     * The address of the first hop, or null when this network does not expose one.
+     *
+     * The default route's gateway is the first hop; nothing else is. A DNS server is only a
+     * stand-in on Wi-Fi, where the router is nearly always the resolver on the local subnet.
+     * On mobile data a resolver belongs to the carrier and sits *past* the first hop, so probing
+     * it and calling the answer "your router" blames a box the user does not own - which is what
+     * the B3 device run showed: 10.206.136.54 was the carrier's resolver, not a local gateway.
+     *
+     * Returning null is a real answer here. [TwoHopProbe] reports the hop as untested, the
+     * inference layer turns that into Unknown rather than Offline, and the screen says the local
+     * link was never asked instead of inventing a verdict about it.
+     */
+    private fun firstHopAddress(): InetAddress? = runCatching {
         val connectivity = context.getSystemService(ConnectivityManager::class.java) ?: return null
         val network = connectivity.activeNetwork ?: return null
         val properties: LinkProperties = connectivity.getLinkProperties(network) ?: return null
-        // LinkProperties does not expose the literal gateway on modern Android; a name server
-        // on the local subnet is the practical first-hop stand-in when dhcpGateway is absent.
-        properties.dnsServers.firstOrNull()
+
+        val defaultRoute = properties.routes.firstOrNull { it.isDefaultRoute && it.gateway != null }
+        defaultRoute?.gateway?.let { return it }
+
+        val onWifi = connectivity.getNetworkCapabilities(network)
+            ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+        when {
+            !onWifi -> null
+            // Android hides the literal gateway on some Wi-Fi networks too. The resolver there is
+            // the router in the overwhelming majority of home and hotspot networks, so it stays
+            // a defensible stand-in - and the evidence on screen names the address either way.
+            else -> properties.dnsServers.firstOrNull()
+        }
     }.getOrNull()
 
     private companion object {

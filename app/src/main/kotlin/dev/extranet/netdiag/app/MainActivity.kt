@@ -1,11 +1,16 @@
 package dev.extranet.netdiag.app
 
+import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,9 +20,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.NetworkCheck
-import androidx.compose.material.icons.outlined.Timeline
+import androidx.compose.material.icons.outlined.Radar
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material.icons.outlined.SignalCellularAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -74,11 +80,11 @@ public class MainActivity : ComponentActivity() {
     }
 }
 
-/** The screens built so far, in the order the batches produced them. */
+/** The product's three tabs. Hotspot and History are reached from a result, not from here. */
 private enum class Screen(val label: String, val icon: ImageVector) {
-    CAPABILITY("Probe", Icons.Outlined.NetworkCheck),
-    WATERFALL("Waterfall", Icons.Outlined.BarChart),
-    TIMELINE("Timeline", Icons.Outlined.Timeline),
+    CAPABILITY("Checkup", Icons.Outlined.NetworkCheck),
+    WATERFALL("Speed", Icons.Outlined.Speed),
+    TIMELINE("Signal", Icons.Outlined.Radar),
 }
 
 @Composable
@@ -96,15 +102,15 @@ private fun NetDiagApp() {
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
             when (current) {
-                Screen.CAPABILITY -> ProbeRoute(Modifier.fillMaxSize())
-                Screen.WATERFALL -> MeasurementRoute(Modifier.fillMaxSize())
-                Screen.TIMELINE -> TimelineRoute(Modifier.fillMaxSize())
+                Screen.CAPABILITY -> CheckupRoute(Modifier.fillMaxSize())
+                Screen.WATERFALL -> SpeedRoute(Modifier.fillMaxSize())
+                Screen.TIMELINE -> SignalRoute(Modifier.fillMaxSize())
             }
         }
     }
 }
 
-/** The top bar: brand eyebrow over the screen name, on paper, with the status bar behind it. */
+/** The top bar: the app name small over the tab's large title, on the canvas colour. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NetDiagTopBar(screen: Screen) {
@@ -112,20 +118,20 @@ private fun NetDiagTopBar(screen: Screen) {
         title = {
             Column {
                 Text(
-                    "NET·DIAG",
+                    "NetDiag",
                     style = MaterialTheme.typography.labelMedium,
-                    color = Editorial.Muted,
+                    color = Editorial.Blue,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     screen.label,
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.displaySmall,
                     color = Editorial.Ink,
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Editorial.Paper,
+            containerColor = Editorial.Bone,
             titleContentColor = Editorial.Ink,
             navigationIconContentColor = Editorial.Ink,
             actionIconContentColor = Editorial.InkSoft,
@@ -173,68 +179,106 @@ private fun NetDiagBottomBar(current: Screen, onSelect: (Screen) -> Unit) {
     }
 }
 
+/** The deep link into this app's Settings page: the only way past a permanent denial. */
+private fun appSettingsIntent(context: android.content.Context): Intent =
+    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.fromParts("package", context.packageName, null)
+    }
+
+/**
+ * The runtime permission dialog, shared by both radio-reading routes.
+ *
+ * One launcher per route rather than a global one, so the result lands in the state machine of
+ * the screen that asked. After the dialog the route re-runs; a permanent denial simply produces
+ * the NeedPermission state again, whose Settings button is the recovery path.
+ */
 @Composable
-private fun TimelineRoute(modifier: Modifier = Modifier) {
-    val viewModel: TimelineViewModel = viewModel()
+private fun rememberRadioPermissionLauncher(onDone: () -> Unit): androidx.activity.compose.ManagedActivityResultLauncher<Array<String>, Map<String, Boolean>> {
+    return rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        // Both answers re-run: granted, the checkup proceeds; denied, the state machine
+        // rebuilds NeedPermission with the same names and the screen shows the Settings path.
+        onDone()
+    }
+}
+
+@Composable
+private fun SignalRoute(modifier: Modifier = Modifier) {
+    val viewModel: SignalViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val requestPermissions = rememberRadioPermissionLauncher { viewModel.start() }
 
-    TimelineScreen(
+    // The radar's live dot wants a heading stream, not the sampler's once-a-second read. The
+    // source is owned by the route and lives exactly as long as the tab is on screen. The value
+    // is polled through produceState at radar-frame pace: the sensor delivers far faster than
+    // the dial needs, and a volatile read per frame is cheaper than a flow per event.
+    val headingSource = remember { LiveHeadingSource(context) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        headingSource.start()
+        onDispose { headingSource.stop() }
+    }
+    val liveHeading by androidx.compose.runtime.produceState<Double?>(initialValue = null, headingSource) {
+        while (true) {
+            value = headingSource.headingDegrees()
+            kotlinx.coroutines.delay(50)
+        }
+    }
+
+    // The view model publishes the live heading into the session's samples on every tick, so
+    // the radar's wedges fill even where the sampler's own compass read comes back empty.
+    viewModel.liveHeadingDegrees = liveHeading
+
+    SignalScreen(
         state = state,
-        onRun = { durationMillis -> viewModel.runSession(durationMillis) },
-        onShareCsv = { csv ->
+        liveHeading = liveHeading,
+        tiltOnly = headingSource.isTiltOnly,
+        onSample = {
+            // The view model's own gate decides whether a dialog or a session is next, so the
+            // permission map lives in one place and the route only carries the launcher.
+            val denied = MeasurementPermissions.missing(context, MeasurementPermissions.SIGNAL)
+            if (denied.isEmpty()) viewModel.start() else requestPermissions.launch(denied.toTypedArray())
+        },
+        onStop = { viewModel.stop() },
+        onShareLog = { csv ->
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/csv"
-                putExtra(Intent.EXTRA_SUBJECT, "B2 radio timeline log")
+                putExtra(Intent.EXTRA_SUBJECT, "NetDiag radio log")
                 putExtra(Intent.EXTRA_TEXT, csv)
             }
-            context.startActivity(Intent.createChooser(intent, "Share radio timeline"))
+            context.startActivity(Intent.createChooser(intent, "Share the radio log"))
         },
+        onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
         modifier = modifier,
     )
 }
 
 @Composable
-private fun ProbeRoute(modifier: Modifier = Modifier) {
-    val viewModel: CapabilityProbeViewModel = viewModel()
+private fun CheckupRoute(modifier: Modifier = Modifier) {
+    val viewModel: CheckupViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    val requestPermissions = rememberRadioPermissionLauncher { viewModel.run() }
 
-    CapabilityProbeScreen(
+    CheckupScreen(
         state = state,
-        onRunSync = { viewModel.run(liveSession = false) },
-        onRunLive = { viewModel.run(liveSession = true) },
-        onShare = {
-            val json = (state as? ProbeUiState.Done)?.json.orEmpty()
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/json"
-                putExtra(Intent.EXTRA_SUBJECT, "B0 capability report")
-                putExtra(Intent.EXTRA_TEXT, json)
-            }
-            context.startActivity(Intent.createChooser(intent, "Share capability report"))
+        onRun = {
+            val denied = MeasurementPermissions.missing(context, MeasurementPermissions.CHECKUP)
+            if (denied.isEmpty()) viewModel.run() else requestPermissions.launch(denied.toTypedArray())
         },
+        onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
         modifier = modifier,
     )
 }
 
 @Composable
-private fun MeasurementRoute(modifier: Modifier = Modifier) {
-    val viewModel: MeasurementViewModel = viewModel()
+private fun SpeedRoute(modifier: Modifier = Modifier) {
+    val viewModel: SpeedViewModel = viewModel()
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
 
-    MeasurementScreen(
+    SpeedScreen(
         state = state,
         onRun = { viewModel.run() },
-        onShare = {
-            val json = (state as? MeasurementUiState.Done)?.json.orEmpty()
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/json"
-                putExtra(Intent.EXTRA_SUBJECT, "B1 latency waterfall")
-                putExtra(Intent.EXTRA_TEXT, json)
-            }
-            context.startActivity(Intent.createChooser(intent, "Share waterfall report"))
-        },
+        onCancel = { viewModel.cancel() },
         modifier = modifier,
     )
 }

@@ -6,6 +6,11 @@ The blueprint describes five processing layers plus a parallel collective layer.
 bottom of that stack and B1 added the measurement engine; the module boundaries were fixed in B0
 so later batches have somewhere to land.
 
+The same stack also has a product-facing description — the three tabs, the result shape, the
+seven diagnosis states and the confidence floor — in `product-spec.md`. This file keeps the batch
+plan, the module boundaries and the data flows; that one is the reference for what a screen may
+show.
+
 ```
 L0 Sensors            :android:sensor-core      radio timeline, GNSS, context, sessions  (B2/B3/B5)
 L1 Normalization      :core, :probe, :measure   calibration, ranges, budgets, waterfall  (B0, B1 done)
@@ -25,6 +30,8 @@ L-C Collective        collective/ (Worker+TS)   ingest, Capacity Atlas, baseline
   privacy/                  geohash encoder, pseudonymous cell key hasher
   json/                     dependency-free JSON emitter
   report/                   SystemId, SupportStatus, CapabilityFinding, CapabilityReport
+  verdict/                  Sample, Finding, Verdict, DiagnosisState — the shared result shape
+  decision/                 Subjects, PathModel, DiagnosisRules — rules and copy, no Android
 
 :probe                      pure Kotlin/JVM, depends on :core
   ProbeSpec / ProbeKind     what to ask, and how it has to be asked
@@ -42,6 +49,10 @@ L-C Collective        collective/ (Worker+TS)   ingest, Capacity Atlas, baseline
   DnsWire                   the DNS codec, so resolution is timed on the wire
   SocketProbeSetSource      the four stages, implemented with JDK sockets
   OsDiagnostics             the platform's own verdict, in a neutral model
+  TwoHopProbe               gateway against internet, so blame lands on one hop
+  MiniThroughputProbe       1 MB over TLS, the reality check
+  SignalCompass             the compass trend, which refuses a direction it cannot support
+  Observations              measurements into findings: the inference layer
 
 :android:measurement        S2 + S7 platform adapters
   AndroidPlatformProbe      PlatformReportSource implemented against real APIs
@@ -50,8 +61,28 @@ L-C Collective        collective/ (Worker+TS)   ingest, Capacity Atlas, baseline
 
 :android:inference          S3 seam — DropRiskScorer, deliberately unimplemented until B9
 :android:decision-sdk       S4 seam — NetworkConfidence, deliberately unimplemented until B10
-:app                        S6 — capability probe screen + waterfall screen, one harness each
+:app                        S6 — the three tabs, one harness each; the B0/B1 report screens
+                            stay compiled because the instrumented tests drive their harnesses
 ```
+
+## Data flow: a checkup on screen (B3)
+
+```
+TelephonyManager / ConnectivityManager / sensors                        ← ANDROID
+        │
+TimelineSession ─ RadioTimelineSampler ─ TwoHopProbe ─ MiniThroughputProbe   ← MEASUREMENT
+        │
+Observations.signal / .hops / .throughput          findings, each with a confidence
+        │
+DiagnosisRules.checkup                             state, cause, action, evidence
+        │
+CheckupViewModel ─► VerdictCard / PathDiagram                     ← PRESENTATION
+```
+
+The three tabs share that path and differ only in which measurements they run: Checkup runs all
+three, Speed runs the throughput probe alone, and Signal runs the radio timeline live. Every
+screen renders the same `Verdict`, and Checkup's diagram is built by `PathModel` from the same
+findings the rules weighed, so the drawing and the answer cannot disagree about which hop failed.
 
 ### Why the engine is split from the platform
 

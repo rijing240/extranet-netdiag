@@ -8,7 +8,7 @@ constants, is pinned by unit tests in `core/src/test/`, and is independently re-
 **No later batch may re-derive any of these.** Add a constant here instead.
 
 ```bash
-python3 tools/verify_ledger.py    # 59 constants + 2 geohash vectors, exit 0 when they agree
+python3 tools/verify_ledger.py    # 86 constants + 2 geohash vectors, exit 0 when they agree
 ```
 
 ## Timing advance
@@ -169,6 +169,7 @@ report then says it was truncated, and a truncated run is not allowed to claim t
 | Sector evidence floor | 5 samples | below this a sector has not been visited, it has been passed |
 | Improvement threshold | 2.0 dB | above the ~1 dB multipath wiggle on a handset |
 | Two-hop rounds | 3 | one lost packet is not a diagnosis |
+| First-hop port | 80 | the port a router is most likely to answer; named wherever the hop is reported, since silence on it is a filter as often as a fault |
 | Gateway / internet budgets | 2,000 / 5,000 ms | the first hop is near, the far hop may not be |
 | Reality-check payload | 1,000,000 B | a check a pay-as-you-go user can afford to run |
 | Reality-check timeout | 20,000 ms | bounded even on a dead network |

@@ -37,6 +37,7 @@ public class MiniThroughputProbe(
         public fun statement(): String = when (verdict) {
             "GOOD" -> "Data is moving well: ${formatRate()} — fine for calls and video."
             "MARGINAL" -> "Data moves slowly: ${formatRate()} — messages yes, video struggles."
+            "INTERCEPTED" -> "Connection blocked: your data plan may be exhausted."
             else -> "Data barely moves: ${formatRate()} — even messages may stall."
         }
 
@@ -62,9 +63,12 @@ public class MiniThroughputProbe(
 
         val startedAt = clock()
         var bytes = 0L
+        var statusCode = 0
         var detail: String? = null
         try {
-            bytes = fetchBodyBytes(host, path, TimelineBudget.THROUGHPUT_TIMEOUT_MILLIS)
+            val response = fetchBodyBytes(host, path, TimelineBudget.THROUGHPUT_TIMEOUT_MILLIS)
+            statusCode = response.first
+            bytes = response.second
             if (bytes == 0L) detail = "the server sent headers but no body"
         } catch (interrupted: InterruptedException) {
             Thread.currentThread().interrupt()
@@ -76,13 +80,22 @@ public class MiniThroughputProbe(
 
         // When the fetch failed early, the elapsed time is still real, but the rate of a
         // failed transfer is zero rather than a number: report the verdict from bytes moved.
-        val bytesPerSecond = if (elapsed > 0 && bytes > 0) bytes * 1_000.0 / elapsed else 0.0
+        val bytesPerSecond = if (elapsed > 0 && bytes > 0) rate(bytes, elapsed) else 0.0
+
+        val verdict = when {
+            statusCode in 300..399 || statusCode == 403 || statusCode == 511 -> "INTERCEPTED"
+            else -> TimelineBudget.throughputVerdict(bytesPerSecond)
+        }
+        
+        if (verdict == "INTERCEPTED") {
+            detail = "Connection intercepted by network (status $statusCode). Your data plan may be exhausted."
+        }
 
         return Result(
             bytesMoved = bytes,
             transferMillis = elapsed / 1_000_000L,
             bytesPerSecond = bytesPerSecond,
-            verdict = TimelineBudget.throughputVerdict(bytesPerSecond),
+            verdict = verdict,
             pingMedianMillis = pingMedian,
             detail = detail,
         )
@@ -111,7 +124,7 @@ public class MiniThroughputProbe(
     }
 
     /** TLS GET, body bytes counted to EOF. Throws on failure; the caller records the reason. */
-    private fun fetchBodyBytes(host: String, path: String, timeoutMillis: Int): Long {
+    private fun fetchBodyBytes(host: String, path: String, timeoutMillis: Int): Pair<Int, Long> {
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val address = InetAddress.getByName(host)
         val socket = factory.createSocket() as SSLSocket
@@ -130,18 +143,7 @@ public class MiniThroughputProbe(
             socket.outputStream.write(request.toByteArray(Charsets.US_ASCII))
             socket.outputStream.flush()
 
-            // Read to EOF, skipping headers once, counting body bytes.
-            val reader = socket.inputStream.bufferedReader(Charsets.ISO_8859_1)
-            var headerEnded = false
-            var bytes = 0L
-            for (line in reader.lineSequence()) {
-                if (!headerEnded) {
-                    if (line.isEmpty() || line == "\r") headerEnded = true
-                    continue
-                }
-                bytes += line.length + 2 // CRLF the reader consumed
-            }
-            return bytes
+            return countBodyBytes(socket.inputStream)
         } finally {
             runCatching { socket.close() }
         }
@@ -151,14 +153,79 @@ public class MiniThroughputProbe(
         "${failure.javaClass.simpleName}: ${failure.message ?: "no message"}"
 
     public companion object {
-        /** The default reality-check target: Android's own connectivity endpoint. */
-        public const val THROUGHPUT_HOST: String = "connectivitycheck.gstatic.com"
+        /**
+         * The default reality-check target.
+         *
+         * Cloudflare's speed-test host, not Android's connectivity endpoint: the connectivity
+         * check answers 204 No Content, so pointing the payload path at it measures a 404 page.
+         * The B2 run did exactly that and reported the error body as "data barely moves", which
+         * is the kind of claim this project exists to avoid - hence [THROUGHPUT_PATH] and this
+         * host being pinned together by a test.
+         */
+        public const val THROUGHPUT_HOST: String = "speed.cloudflare.com"
 
         /**
-         * A path returning a modest body. The connectivity endpoint returns 204 No Content,
-         * so the probe needs a target with bytes; Cloudflare's speed-test endpoint serves a
-         * configurable payload and answers quickly worldwide.
+         * The path that serves [TimelineBudget.THROUGHPUT_PAYLOAD_BYTES] as an octet stream.
+         *
+         * `__down` is Cloudflare's documented speed-test endpoint and honours the `bytes`
+         * parameter, so the payload matches the budget rather than depending on whatever a
+         * plain file host happens to serve today.
          */
         public const val THROUGHPUT_PATH: String = "/__down?bytes=1000000"
+
+        /**
+         * Payload over time, bytes per second.
+         *
+         * A separate function because it is the one piece of arithmetic in the probe that a
+         * wrong factor silently turns into a wrong verdict, and it is worth a test that does
+         * not need a network. Byte counts and nanoseconds in, bytes per second out.
+         */
+        public fun rate(bytes: Long, elapsedNanos: Long): Double {
+            require(bytes >= 0) { "a transfer cannot move a negative number of bytes, got $bytes" }
+            require(elapsedNanos > 0) { "a rate needs a positive elapsed time, got $elapsedNanos ns" }
+            return bytes * NANOS_PER_SECOND.toDouble() / elapsedNanos
+        }
+
+        /**
+         * Body bytes of one HTTP/1.1 response, counted from the raw stream.
+         *
+         * Returns the HTTP status code and the body byte count.
+         */
+        public fun countBodyBytes(input: java.io.InputStream): Pair<Int, Long> {
+            val buffer = ByteArray(16 * 1024)
+            var lastFour = 0
+            var headersDone = false
+            var total = 0L
+            val headerBytes = mutableListOf<Byte>()
+            var statusCode = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read <= 0) break
+                for (index in 0 until read) {
+                    val b = buffer[index]
+                    if (headersDone) {
+                        total++
+                    } else {
+                        if (headerBytes.size < 128) headerBytes.add(b)
+                        lastFour = (lastFour shl 8) or (b.toInt() and 0xFF)
+                        if (lastFour == HEADER_TERMINATOR) {
+                            headersDone = true
+                            val headerString = String(headerBytes.toByteArray(), Charsets.US_ASCII)
+                            val firstLine = headerString.substringBefore("\r\n")
+                            val parts = firstLine.split(" ")
+                            if (parts.size >= 2) {
+                                statusCode = parts[1].toIntOrNull() ?: 0
+                            }
+                        }
+                    }
+                }
+            }
+            return statusCode to total
+        }
+
+        private const val NANOS_PER_SECOND: Long = 1_000_000_000L
+
+        /** CRLFCRLF, as the 32-bit integer the byte-at-a-time scan compares against. */
+        private const val HEADER_TERMINATOR: Int = 0x0D0A0D0A
     }
 }

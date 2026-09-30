@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -12,8 +14,8 @@ android {
         applicationId = "dev.extranet.netdiag"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-B0"
+        versionCode = 3
+        versionName = "0.3.0-B3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -56,6 +58,24 @@ android {
         abortOnError = false
     }
 }
+
+// Inter (SIL Open Font License) is the UI typeface: the closest open font to the one Apple uses,
+// which is licensed for Apple platforms only. The binary is fetched once on first build instead of
+// being committed, and every later build finds it already in place.
+val interFontFile = layout.projectDirectory.file("src/main/res/font/inter_variable.ttf").asFile
+val fetchInterFont by tasks.registering {
+    outputs.file(interFontFile)
+    onlyIf { !interFontFile.exists() }
+    doLast {
+        interFontFile.parentFile.mkdirs()
+        val source = "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
+        val connection = URI(source).toURL().openConnection()
+        connection.getInputStream().use { input ->
+            interFontFile.outputStream().use { output -> input.copyTo(output) }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(fetchInterFont) }
 
 dependencies {
     implementation(project(":core"))

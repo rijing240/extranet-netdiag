@@ -2,7 +2,6 @@ package dev.extranet.netdiag.measure
 
 import dev.extranet.netdiag.core.ledger.TimelineBudget
 import kotlin.math.PI
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -120,6 +119,40 @@ public object SignalCompass {
             sectorCount = bySector.size,
             samplesWithHeading = usable.size,
         )
+    }
+
+    /**
+     * Every sector's aggregate, in the fixed sector order the radar draws.
+     *
+     * [verdict] answers "which direction was best" and can only speak about sectors that beat
+     * the threshold; the radar needs all [TimelineBudget.COMPASS_SECTORS] wedges so an unvisited
+     * direction shows as an empty arc rather than not existing. Returned in index order with a
+     * null for every sector that saw no heading-and-RSRP sample.
+     */
+    public fun sectors(samples: List<RadioSample>): List<Sector?> {
+        val usable = samples.mapNotNull { sample ->
+            val heading = sample.headingDegrees
+            val rsrp = sample.rsrpDbm
+            if (heading == null || rsrp == null) null else sectorIndex(heading) to rsrp
+        }
+        if (usable.isEmpty()) {
+            return List(TimelineBudget.COMPASS_SECTORS) { null }
+        }
+
+        val overallMedian = median(usable.map { it.second }.sorted())
+        val bySector = usable.groupBy({ it.first }, { it.second })
+
+        return List(TimelineBudget.COMPASS_SECTORS) { index ->
+            val values = bySector[index] ?: return@List null
+            val sectorMedian = median(values.sorted())
+            Sector(
+                index = index,
+                centerDegrees = sectorCenterDegrees(index),
+                sampleCount = values.size,
+                medianRsrpDbm = sectorMedian,
+                improvementDb = overallMedian?.let { (sectorMedian ?: it) - it },
+            )
+        }
     }
 
     /** Median of an already-sorted list; the nearest-rank rule the waterfall also uses. */

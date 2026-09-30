@@ -1,7 +1,6 @@
 package dev.extranet.netdiag.app
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -25,32 +24,32 @@ import androidx.compose.ui.unit.dp
 import dev.extranet.netdiag.core.report.SupportStatus
 
 /**
- * The editorial primitives shared by every screen, composed the way an app composes them.
+ * The shared primitives, re-voiced for a phone-native surface.
  *
- * Each one still mirrors a rule from the reference CSS - hairline rules instead of shadows, mono
- * upper-case labels with wide tracking, the pink stitch as the only flourish - but the unit of
- * composition is now the card rather than the ruled page: SectionHeader opens a screen, SectionCard
- * holds each group of readings, and the buttons are sized for a thumb rather than a mouse.
+ * The names are the ones the screens already call, so the restyle is contained here: cards lose
+ * their hairline border for a shadowless white-on-grey separation, buttons lose the upper-case
+ * mono for sentence-case Inter, and the eyebrow becomes a plain small title. The stitch survives
+ * only as the radar's sweep trail colour.
  */
 
-/** The `.eyebrow`: mono, small, upper case, muted, wide-tracked. */
+/** A small section label: sentence case, medium weight, quiet. */
 @Composable
-public fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = Editorial.Muted) {
+public fun Eyebrow(text: String, modifier: Modifier = Modifier, color: Color = Editorial.InkMid) {
     Text(
-        text = text.uppercase(),
+        text = text,
         style = MaterialTheme.typography.labelMedium,
         color = color,
         modifier = modifier,
     )
 }
 
-/** The 1 px rule the reference uses everywhere instead of card borders or shadows. */
+/** Kept for the one place a structural rule still helps (under the bottom bar). */
 @Composable
 public fun Hairline(modifier: Modifier = Modifier, color: Color = Editorial.Hairline) {
     Box(modifier.fillMaxWidth().height(1.dp).background(color))
 }
 
-/** The `.stitch-line`: a short dashed pink rule under card titles. */
+/** The radar's sweep trail, kept as a component so the palette dependency stays in one file. */
 @Composable
 public fun StitchLine(modifier: Modifier = Modifier) {
     Row(modifier) {
@@ -61,26 +60,24 @@ public fun StitchLine(modifier: Modifier = Modifier) {
     }
 }
 
-/** Primary button: solid black, rounded, mono upper case, 48 dp tall for a thumb. */
+/** Primary action: the blue accent, rounded, sentence case, 52 dp for a thumb. */
 @Composable
 public fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
         onClick = onClick,
         enabled = enabled,
         shape = Editorial.ButtonShape,
-        // Buttons sit three across on the probe screen, so the default 24 dp side padding would
-        // push "LIVE 8 S" onto a second line inside a bar whose height is fixed at 48 dp.
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
         colors = ButtonDefaults.buttonColors(
-            containerColor = Editorial.Ink,
+            containerColor = Editorial.Blue,
             contentColor = Editorial.Paper,
             disabledContainerColor = Editorial.Hairline,
             disabledContentColor = Editorial.Muted,
         ),
-        modifier = modifier.height(48.dp),
+        modifier = modifier.height(52.dp),
     ) {
         Text(
-            text.uppercase(),
+            text,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -88,24 +85,24 @@ public fun InkButton(text: String, onClick: () -> Unit, modifier: Modifier = Mod
     }
 }
 
-/** Secondary button: paper background, 1 px black border, rounded, 48 dp tall. */
+/** Secondary action: white with the quiet border, same height as the primary. */
 @Composable
 public fun LineButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     OutlinedButton(
         onClick = onClick,
         enabled = enabled,
         shape = Editorial.ButtonShape,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
         colors = ButtonDefaults.outlinedButtonColors(
             contentColor = Editorial.Ink,
             disabledContainerColor = Editorial.Paper,
             disabledContentColor = Editorial.Muted,
         ),
-        border = androidx.compose.foundation.BorderStroke(1.dp, if (enabled) Editorial.Ink else Editorial.Hairline),
-        modifier = modifier.height(48.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (enabled) Editorial.Hairline else Editorial.Hairline),
+        modifier = modifier.height(52.dp),
     ) {
         Text(
-            text.uppercase(),
+            text,
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -114,21 +111,21 @@ public fun LineButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
 }
 
 /**
- * Status tag: the value in green when it is good, plain mono otherwise.
+ * Status tag: the word a person would use, in the status colour.
  *
- * The reference has exactly one accent color for numbers worth trusting; SUPPORTED and a met
- * exit criterion both earn it, everything else stays quiet.
+ * SUPPORTED and its siblings are capability-report vocabulary that only the B0/B1 screens still
+ * render; they keep their plain treatment.
  */
 @Composable
 public fun StatusTag(status: SupportStatus, modifier: Modifier = Modifier) {
     val good = status == SupportStatus.SUPPORTED
     Text(
-        text = status.name,
-        style = MaterialTheme.typography.labelSmall,
+        text = status.name.lowercase().replaceFirstChar { it.uppercase() },
+        style = MaterialTheme.typography.labelMedium,
         color = when {
             good -> Editorial.Green
-            status == SupportStatus.THROWS -> MaterialTheme.colorScheme.error
-            status == SupportStatus.PERMISSION_DENIED -> MaterialTheme.colorScheme.error
+            status == SupportStatus.THROWS -> Editorial.Red
+            status == SupportStatus.PERMISSION_DENIED -> Editorial.Red
             else -> Editorial.Muted
         },
         modifier = modifier,
@@ -136,11 +133,11 @@ public fun StatusTag(status: SupportStatus, modifier: Modifier = Modifier) {
 }
 
 /**
- * The screen header: eyebrow, headline, optional standfirst, closed by the pink stitch.
+ * The screen opener: a small question over a large answer-shaped title.
  *
- * Replaces the site's full-bleed hero. A hero is a page's opening statement pinned to the top
- * of a document; an app's opening statement belongs to the scroll, so this is set on the bone
- * canvas rather than on a black band and it moves away with the content.
+ * No standfirst paragraph - the first build opened every screen with an explanation of the test,
+ * which is documentation, not interface. What a first-time user needs is the question; the how
+ * lives behind the Details fold of each result.
  */
 @Composable
 public fun SectionHeader(
@@ -150,10 +147,6 @@ public fun SectionHeader(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.fillMaxWidth()) {
-        // The hero set this in translucent paper on black, where it sat at roughly 4.3:1; on
-        // bone the same role needs a real tone, so it takes InkMid to keep that contrast.
-        Eyebrow(eyebrow, color = Editorial.InkMid)
-        Spacer(Modifier.height(6.dp))
         Text(
             title,
             style = MaterialTheme.typography.displaySmall,
@@ -164,21 +157,15 @@ public fun SectionHeader(
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Editorial.InkSoft,
+                color = Editorial.InkMid,
             )
         }
-        Spacer(Modifier.height(10.dp))
-        StitchLine()
     }
 }
 
 /**
- * A section of the screen, drawn as one touchable block: paper on bone, 16 dp radius, one hairline
- * for an edge instead of a shadow.
- *
- * This is the unit the whole app is composed from. Where the site separated content with a full
- * width rule, the app groups it into a card, so related readings sit together and unrelated ones
- * are visibly apart.
+ * A card: white on grey, 20 dp radius, no border - separation comes from the surface contrast,
+ * the way iOS cards do it, rather than from a stroke.
  */
 @Composable
 public fun SectionCard(
@@ -190,8 +177,7 @@ public fun SectionCard(
         modifier
             .fillMaxWidth()
             .background(Editorial.Paper, Editorial.CardShape)
-            .border(1.dp, Editorial.Hairline, Editorial.CardShape)
-            .padding(horizontal = 16.dp, vertical = 16.dp),
+            .padding(horizontal = 18.dp, vertical = 18.dp),
     ) {
         if (eyebrow != null) {
             Eyebrow(eyebrow)
@@ -201,9 +187,9 @@ public fun SectionCard(
     }
 }
 
-/** A quiet mono line for metadata, the way the reference sets prices and footers. */
+/** A quiet line for a measured value; green only when the caller says the number is good. */
 @Composable
-public fun MonoMeta(text: String, modifier: Modifier = Modifier, color: Color = Editorial.Green) {
+public fun MonoMeta(text: String, modifier: Modifier = Modifier, color: Color = Editorial.Ink) {
     Text(
         text,
         style = MaterialTheme.typography.labelLarge,

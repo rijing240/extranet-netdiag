@@ -4,7 +4,7 @@ A network-aware Android telemetry engine: it measures what the radio is actually
 the user whose fault a slow connection is, and — once there is enough data — predicts service
 loss a few seconds before it happens.
 
-This repository is at **B1: measurement engine v1**.
+This repository is at **B2: radio timeline**, with B3 (native app chrome) in progress on its branch.
 
 ## What B0 delivers
 
@@ -60,7 +60,7 @@ It has already paid for itself: it caught two incorrectly transcribed Shannon-Ha
 (the −5 dB one was 9,600 bps off) before they could propagate into the capacity index.
 
 ```bash
-python3 tools/verify_ledger.py     # 72 constants, 2 geohash vectors
+python3 tools/verify_ledger.py     # 86 constants, 2 geohash vectors
 ```
 
 ## Building
@@ -114,6 +114,8 @@ at least five independent observations back it. See `docs/architecture.md`.
 ## Documents
 
 - `docs/architecture.md` — systems, layers, data flow, module boundaries.
+- `docs/product-spec.md` — the three tabs, the result shape, the diagnosis states and the rules a screen follows.
 - `docs/calculation-ledger.md` — every constant, its derivation, and the plan discrepancies.
 - `docs/probe-engine.md` — the four stages, the statistics, the exit criterion, and how to run it.
 - `docs/b0-device-run.md` — how to obtain the device report and what has and has not been run.
+- `docs/project-history.md` — what each batch delivered, the mistakes caught, the device evidence, and the current state.

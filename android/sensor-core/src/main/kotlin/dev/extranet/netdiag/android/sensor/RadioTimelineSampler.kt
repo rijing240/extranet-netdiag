@@ -148,6 +148,9 @@ public class DeviceRadioSensorSource(private val context: Context) : RadioSensor
     private val telephony = context.getSystemService(TelephonyManager::class.java)
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
+    // Written by the platform's signal callback on the main executor and read by the sampler on
+    // whatever thread it was given; volatile so a sample never reads a half-published reading.
+    @Volatile
     private var lastSignal: LteSignal? = null
 
     private val signalCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

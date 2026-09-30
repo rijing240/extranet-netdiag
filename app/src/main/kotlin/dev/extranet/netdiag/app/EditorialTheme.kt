@@ -17,143 +17,153 @@ import androidx.compose.ui.unit.sp
 import dev.extranet.netdiag.app.R
 
 /**
- * The editorial design language, transcribed from the reference site and then re-set for an app.
+ * The app's look: a calm, phone-native surface built on Inter.
  *
- * Bone-black on near-white, hairline rules instead of card shadows, monospace labels in upper
- * case with wide tracking, a single green for numbers that matter, and a pink stitch accent.
- * Type carries the hierarchy: Space Grotesk for display, JetBrains Mono for everything that is
- * a label or a measurement.
+ * The first build dressed itself as an editorial document - bone canvas, hairline rules,
+ * upper-case monospace labels, a pink stitch - which read as a developer instrument rather than
+ * something to hand to a person whose question is "why is my internet slow". The structure that
+ * mattered carried over: one canvas, cards floating on it, big readable type, a small set of
+ * status colours. What changed is the voice: soft grey instead of bone, rounded white cards, a
+ * single blue accent, and sentence case everywhere.
  *
- * What changed from the site: the canvas is bone rather than white so cards can be paper on top
- * of it, and corners are rounded. Those two are the difference between a document and a stack
- * of touchable surfaces; everything else in the language carried over unchanged.
+ * The typeface is Inter, not Apple's San Francisco: SF is licensed only for Apple platforms and
+ * cannot legally ship inside an Android app. Inter is the closest open-licensed match - same
+ * neutral grotesque, same tall x-height, designed for screens - so the app reads "modern phone"
+ * without borrowing a licence it does not have.
  */
 public object Editorial {
 
-    // Palette, from the reference CSS, plus one addition the site never needed: Bone is the app
-    // background and Paper is what cards sit on it. A page can be one flat white because a page
-    // is one flat surface; an app needs its content blocks to separate from the canvas, so the
-    // canvas gets a warm bone tint and every card stays near-white on top of it.
-    public val Bone: Color = Color(0xFFf2f0ec)
-    public val Paper: Color = Color(0xFFfdfdfc)
-    public val Ink: Color = Color(0xFF000000)
-    public val InkSoft: Color = Color(0xFF1e1e1e)
-    public val Hairline: Color = Color(0xFFdedede)
-    public val Muted: Color = Color(0xFFc4c4c4)
-    // The one tone the site never needed: a page has no inactive tab, but a bottom bar does, and
-    // Muted on paper is a hairline's worth of contrast. InkMid sits between Muted and InkSoft so
-    // an unselected tab stays readable without competing with the ink pill on the selected one.
-    public val InkMid: Color = Color(0xFF6b6b6b)
-    public val Green: Color = Color(0xFF16803c)
-    public val Stitch: Color = Color(0xFFf386a1)
-    public val StitchDeep: Color = Color(0xFFd45bb6)
+    // Canvas and surface, in the iOS-system register: a cool light grey the cards float on.
+    public val Bone: Color = Color(0xFFF2F2F7)
+    public val Paper: Color = Color(0xFFFFFFFF)
 
-    // Corners are rounded now: the reference's border-radius: 0 reads as a web page, and the
-    // radius is most of what makes a surface feel like a touchable block rather than a region
-    // of a document. Cards take the larger radius, controls the smaller one.
-    public val CardShape = RoundedCornerShape(16.dp)
-    public val ButtonShape = RoundedCornerShape(12.dp)
+    // Text: near-black rather than pure black, the way phone UIs set body copy.
+    public val Ink: Color = Color(0xFF111118)
+    public val InkSoft: Color = Color(0xFF3A3A43)
+    public val InkMid: Color = Color(0xFF6E6E78)
+    public val Muted: Color = Color(0xFFAEAEB6)
+    public val Hairline: Color = Color(0xFFE4E4EA)
+
+    // One accent for actions and focus; the status colours do the talking otherwise.
+    public val Blue: Color = Color(0xFF0A66FF)
+    public val BlueDeep: Color = Color(0xFF084EC0)
+
+    // Status: green is good, amber is workable-but-worth-fixing, red is a real problem.
+    public val Green: Color = Color(0xFF1E9E55)
+    public val Amber: Color = Color(0xFFD98A00)
+    public val Red: Color = Color(0xFFE03131)
+
+    // The pink pair survives only as the radar's sweep trail: a soft flourish on one screen,
+    // where a rotating dial wants a colour that is not a status.
+    public val Stitch: Color = Color(0xFFF386A1)
+    public val StitchDeep: Color = Color(0xFFD45BB6)
+
+    public val CardShape = RoundedCornerShape(20.dp)
+    public val ButtonShape = RoundedCornerShape(14.dp)
 
     public val Grotesk: FontFamily = FontFamily(
-        Font(R.font.spacegrotesk_variable, FontWeight.Normal),
-        Font(R.font.spacegrotesk_variable, FontWeight.Medium),
-        Font(R.font.spacegrotesk_variable, FontWeight.Bold),
+        Font(R.font.inter_variable, FontWeight.Normal),
+        Font(R.font.inter_variable, FontWeight.Medium),
+        Font(R.font.inter_variable, FontWeight.SemiBold),
+        Font(R.font.inter_variable, FontWeight.Bold),
     )
 
+    /**
+     * Measurements still set in a mono face - a number that updates every second reads better
+     * in a tabular font - but quiet, sentence case, no wide tracking.
+     */
     public val Mono: FontFamily = FontFamily(
         Font(R.font.jetbrainsmono_variable, FontWeight.Normal),
         Font(R.font.jetbrainsmono_variable, FontWeight.Medium),
     )
 
     /**
-     * Type scale. The reference's pixel values are converted at 17 px/rem root: the eyebrow and
-     * label sizes are the site's exact rem values, the display sizes are clamped by the phone
-     * width instead of the viewport.
+     * Type scale on Inter. Weights do the hierarchy now: semibold titles, regular body, medium
+     * labels. Sizes grew slightly over the editorial scale because Inter sets smaller than
+     * Space Grotesk at the same point size.
      */
     public val Typography: Typography = Typography(
         displayLarge = TextStyle(
             fontFamily = Grotesk,
-            fontWeight = FontWeight.Medium,
-            fontSize = 44.sp,
-            lineHeight = 50.sp,
-            letterSpacing = (-0.32).sp,
+            fontWeight = FontWeight.Bold,
+            fontSize = 40.sp,
+            lineHeight = 46.sp,
+            letterSpacing = (-0.5).sp,
         ),
         displaySmall = TextStyle(
             fontFamily = Grotesk,
-            fontWeight = FontWeight.Medium,
-            fontSize = 30.sp,
-            lineHeight = 36.sp,
-            letterSpacing = (-0.32).sp,
+            fontWeight = FontWeight.Bold,
+            fontSize = 28.sp,
+            lineHeight = 34.sp,
+            letterSpacing = (-0.4).sp,
         ),
         headlineSmall = TextStyle(
             fontFamily = Grotesk,
-            fontWeight = FontWeight.Medium,
-            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 21.sp,
             lineHeight = 26.sp,
-            letterSpacing = (-0.32).sp,
+            letterSpacing = (-0.3).sp,
         ),
         titleLarge = TextStyle(
             fontFamily = Grotesk,
-            fontWeight = FontWeight.Medium,
-            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 19.sp,
             lineHeight = 24.sp,
-            letterSpacing = (-0.32).sp,
+            letterSpacing = (-0.2).sp,
         ),
         titleMedium = TextStyle(
             fontFamily = Grotesk,
-            fontWeight = FontWeight.Medium,
-            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 16.sp,
             lineHeight = 21.sp,
         ),
         bodyLarge = TextStyle(
             fontFamily = Grotesk,
             fontWeight = FontWeight.Normal,
             fontSize = 16.sp,
-            lineHeight = 24.sp,
+            lineHeight = 23.sp,
         ),
         bodyMedium = TextStyle(
             fontFamily = Grotesk,
             fontWeight = FontWeight.Normal,
-            fontSize = 14.sp,
+            fontSize = 14.5.sp,
             lineHeight = 21.sp,
         ),
         bodySmall = TextStyle(
             fontFamily = Grotesk,
             fontWeight = FontWeight.Normal,
-            fontSize = 12.5.sp,
+            fontSize = 13.sp,
             lineHeight = 18.sp,
         ),
         labelLarge = TextStyle(
-            fontFamily = Mono,
+            fontFamily = Grotesk,
             fontWeight = FontWeight.Medium,
             fontSize = 14.sp,
             lineHeight = 18.sp,
-            letterSpacing = 0.5.sp,
+            letterSpacing = 0.sp,
         ),
-        // The eyebrow: monospace, small, upper case applied at the call site, wide tracking.
         labelMedium = TextStyle(
-            fontFamily = Mono,
-            fontWeight = FontWeight.Normal,
-            fontSize = 12.sp,
-            lineHeight = 15.sp,
-            letterSpacing = 0.85.sp,
+            fontFamily = Grotesk,
+            fontWeight = FontWeight.Medium,
+            fontSize = 12.5.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 0.1.sp,
         ),
         labelSmall = TextStyle(
-            fontFamily = Mono,
-            fontWeight = FontWeight.Normal,
-            fontSize = 10.5.sp,
-            lineHeight = 14.sp,
-            letterSpacing = 0.5.sp,
+            fontFamily = Grotesk,
+            fontWeight = FontWeight.Medium,
+            fontSize = 11.5.sp,
+            lineHeight = 15.sp,
+            letterSpacing = 0.2.sp,
         ),
     )
 
     /**
-     * Light scheme. Background is the bone canvas and surface is paper, which is the one change
-     * that lets every card read as a distinct object; the rest of the roles are the same black
-     * and bone the reference used.
+     * Light scheme. Primary is the blue accent rather than ink, so every Material control that
+     * inherits it - switches, cursors, ripples - lands on the accent without per-call colours.
      */
     public val ColorScheme: ColorScheme = lightColorScheme(
-        primary = Ink,
+        primary = Blue,
         onPrimary = Paper,
         secondary = InkSoft,
         onSecondary = Paper,
@@ -165,19 +175,19 @@ public object Editorial {
         onSurfaceVariant = InkSoft,
         outline = Muted,
         outlineVariant = Hairline,
-        error = Color(0xFFa11313),
+        error = Red,
     )
 }
 
-/** The app theme: the editorial language, nothing else. */
+/** The app theme: Inter, soft grey, white cards, one blue accent. */
 @Composable
 public fun EditorialTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = Editorial.ColorScheme,
         typography = Editorial.Typography,
         shapes = Shapes(
-            extraSmall = RoundedCornerShape(8.dp),
-            small = RoundedCornerShape(10.dp),
+            extraSmall = RoundedCornerShape(10.dp),
+            small = RoundedCornerShape(12.dp),
             medium = Editorial.ButtonShape,
             large = Editorial.CardShape,
             extraLarge = RoundedCornerShape(24.dp),

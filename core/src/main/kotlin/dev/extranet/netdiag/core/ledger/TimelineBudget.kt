@@ -32,6 +32,16 @@ public object TimelineBudget {
      */
     public const val COMPASS_IMPROVEMENT_THRESHOLD_DB: Double = 2.0
 
+    /**
+     * The port the first hop is asked on.
+     *
+     * 80 because it is the port a router or hotspot is most likely to answer, and because a
+     * refused connection still proves the packet made the round trip. It is named wherever the
+     * first hop is reported, since a host that serves no such port looks exactly like a host
+     * that is down - and only the user can tell WHICH of those their router is.
+     */
+    public const val LOCAL_HOP_PORT: Int = 80
+
     /** Timeout for one ICMP-style reachability check to the gateway, milliseconds. */
     public const val GATEWAY_PROBE_TIMEOUT_MILLIS: Int = 2_000
 

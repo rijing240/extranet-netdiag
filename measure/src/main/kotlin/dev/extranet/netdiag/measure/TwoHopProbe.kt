@@ -70,7 +70,7 @@ public class TwoHopProbe(
         rounds: Int = TimelineBudget.TWO_HOP_ROUNDS,
     ): Verdict {
         val gatewayResults = (1..rounds).map { _ ->
-            probeHop(gatewayAddress?.hostAddress ?: "gateway unknown", gatewayAddress, TimelineBudget.GATEWAY_PROBE_TIMEOUT_MILLIS)
+            probeHop(gatewayAddress?.hostAddress ?: UNKNOWN_GATEWAY_ADDRESS, gatewayAddress, TimelineBudget.GATEWAY_PROBE_TIMEOUT_MILLIS)
         }
         val internetResults = (1..rounds).map { _ ->
             probeHop(internetHost, resolve(internetHost), TimelineBudget.INTERNET_PROBE_TIMEOUT_MILLIS, internetPort)
@@ -90,15 +90,23 @@ public class TwoHopProbe(
     private fun resolve(host: String): InetAddress? =
         runCatching { InetAddress.getByName(host) }.getOrNull()
 
-    private fun probeHop(addressText: String, address: InetAddress?, timeoutMillis: Int, port: Int = 80): HopResult {
+    private fun probeHop(
+        addressText: String,
+        address: InetAddress?,
+        timeoutMillis: Int,
+        port: Int = TimelineBudget.LOCAL_HOP_PORT,
+    ): HopResult {
         if (address == null) return HopResult(addressText, reachable = false, latencyMillis = null)
         val start = clock()
         val socket = runCatching { Socket() }.getOrNull() ?: return HopResult(addressText, reachable = false, latencyMillis = null)
         return try {
             socket.connect(java.net.InetSocketAddress(address, port), timeoutMillis)
             HopResult(addressText, reachable = true, latencyMillis = (clock() - start) / 1_000_000L)
+        } catch (e: java.net.ConnectException) {
+            // A refused connection still proves the host answered, measuring the round trip.
+            HopResult(addressText, reachable = true, latencyMillis = (clock() - start) / 1_000_000L)
         } catch (_: Exception) {
-            // A refused connection still proves the host answered; a timeout does not.
+            // A timeout or unreachable route.
             HopResult(addressText, reachable = false, latencyMillis = null)
         } finally {
             runCatching { socket.close() }
@@ -122,6 +130,15 @@ public class TwoHopProbe(
     }
 
     public companion object {
+        /**
+         * What the first hop's address field says when no gateway could be determined.
+         *
+         * Public because the inference layer must not read this as a dead link: an untested
+         * hop and a hop that refused to answer are different facts, and only one of them is
+         * evidence that the router is at fault.
+         */
+        public const val UNKNOWN_GATEWAY_ADDRESS: String = "gateway unknown"
+
         /**
          * The best gateway guess from the device's routing table: the source address of the
          * default route's interface. Not perfect - Android hides the literal gateway from
