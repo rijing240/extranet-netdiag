@@ -85,84 +85,86 @@ public fun SignalRadar(
                 val center = Offset(size.width / 2f, size.height / 2f)
                 val sectorSweep = 360f / 16f
 
-                // The empty ring every sector sits on, so an unvisited direction is visibly
-                // "not looked at yet" rather than absent.
-                drawCircle(
-                    color = Editorial.Hairline,
-                    radius = radius,
-                    center = center,
-                    style = Stroke(stroke, cap = StrokeCap.Butt),
-                )
-
-                // Sixteen measured wedges. The compass sector index runs 0 = east clockwise;
-                // Compose arcs run 0 = three o'clock clockwise too, so no rotation offset is
-                // needed - the wedge at index i is simply drawn at i * sectorSweep.
-                for (sector in sectors) {
-                    if (sector == null) continue
-                    val improvement = sector.improvementDb ?: 0.0
-                    val color = when {
-                        improvement >= 2.0 -> Editorial.Green
-                        improvement <= -2.0 -> Editorial.Red.copy(alpha = 0.55f)
-                        else -> Editorial.Muted.copy(alpha = 0.7f)
-                    }
-                    val centerDegrees = sector.centerDegrees.toFloat()
-                    val startAngle = centerDegrees - 90f - (sectorSweep - 2f) / 2f
-                    drawArc(
-                        color = color,
-                        startAngle = startAngle,
-                        sweepAngle = sectorSweep - 2f,
-                        useCenter = false,
-                        topLeft = Offset(center.x - radius, center.y - radius),
-                        size = Size(radius * 2f, radius * 2f),
+                androidx.compose.ui.graphics.drawscope.rotate(degrees = -(liveHeading?.toFloat() ?: 0f)) {
+                    // The empty ring every sector sits on, so an unvisited direction is visibly
+                    // "not looked at yet" rather than absent.
+                    drawCircle(
+                        color = Editorial.Hairline,
+                        radius = radius,
+                        center = center,
                         style = Stroke(stroke, cap = StrokeCap.Butt),
                     )
-                }
 
-                // The sweep trail, sampling only.
-                if (sampling) {
-                    drawArc(
-                        color = Editorial.Stitch.copy(alpha = 0.5f),
-                        startAngle = sweepAngle - 90f - 40f,
-                        sweepAngle = 40f,
-                        useCenter = false,
-                        topLeft = Offset(center.x - radius, center.y - radius),
-                        size = Size(radius * 2f, radius * 2f),
-                        style = Stroke(stroke, cap = StrokeCap.Round),
-                    )
-                }
+                    // Sixteen measured wedges. The compass sector index runs 0 = east clockwise;
+                    // Compose arcs run 0 = three o'clock clockwise too, so no rotation offset is
+                    // needed - the wedge at index i is simply drawn at i * sectorSweep.
+                    for (sector in sectors) {
+                        if (sector == null) continue
+                        val improvement = sector.improvementDb ?: 0.0
+                        val color = when {
+                            improvement >= 2.0 -> Editorial.Green
+                            improvement <= -2.0 -> Editorial.Red.copy(alpha = 0.55f)
+                            else -> Editorial.Muted.copy(alpha = 0.7f)
+                        }
+                        val centerDegrees = sector.centerDegrees.toFloat()
+                        val startAngle = centerDegrees - 90f - (sectorSweep - 2f) / 2f
+                        drawArc(
+                            color = color,
+                            startAngle = startAngle,
+                            sweepAngle = sectorSweep - 2f,
+                            useCenter = false,
+                            topLeft = Offset(center.x - radius, center.y - radius),
+                            size = Size(radius * 2f, radius * 2f),
+                            style = Stroke(stroke, cap = StrokeCap.Butt),
+                        )
+                    }
 
-                // The direction needle, only when the statistics support one.
-                if (best != null) {
-                    val radians = Math.toRadians(best.centerDegrees - 90.0)
-                    val inner = radius * 0.35f
-                    val outer = radius * 0.92f
-                    drawLine(
-                        color = Editorial.Green,
-                        start = Offset(
-                            center.x + inner * cos(radians).toFloat(),
-                            center.y + inner * sin(radians).toFloat(),
-                        ),
-                        end = Offset(
-                            center.x + outer * cos(radians).toFloat(),
-                            center.y + outer * sin(radians).toFloat(),
-                        ),
-                        strokeWidth = 6.dp.toPx(),
-                        cap = StrokeCap.Round,
-                    )
-                }
+                    // The sweep trail, sampling only.
+                    if (sampling) {
+                        drawArc(
+                            color = Editorial.Stitch.copy(alpha = 0.5f),
+                            startAngle = sweepAngle - 90f - 40f,
+                            sweepAngle = 40f,
+                            useCenter = false,
+                            topLeft = Offset(center.x - radius, center.y - radius),
+                            size = Size(radius * 2f, radius * 2f),
+                            style = Stroke(stroke, cap = StrokeCap.Round),
+                        )
+                    }
 
-                // The user's live heading dot, so turning the phone visibly turns the dial.
-                if (liveHeading != null) {
-                    val radians = Math.toRadians(liveHeading - 90.0)
-                    val dotRadius = 5.dp.toPx()
-                    drawCircle(
-                        color = Editorial.Blue,
-                        radius = dotRadius,
-                        center = Offset(
-                            center.x + (radius * 0.8f) * cos(radians).toFloat(),
-                            center.y + (radius * 0.8f) * sin(radians).toFloat(),
-                        ),
-                    )
+                    // The direction needle, only when the statistics support one.
+                    if (best != null) {
+                        val radians = Math.toRadians(best.centerDegrees - 90.0)
+                        val inner = radius * 0.35f
+                        val outer = radius * 0.92f
+                        drawLine(
+                            color = Editorial.Green,
+                            start = Offset(
+                                center.x + inner * cos(radians).toFloat(),
+                                center.y + inner * sin(radians).toFloat(),
+                            ),
+                            end = Offset(
+                                center.x + outer * cos(radians).toFloat(),
+                                center.y + outer * sin(radians).toFloat(),
+                            ),
+                            strokeWidth = 6.dp.toPx(),
+                            cap = StrokeCap.Round,
+                        )
+                    }
+
+                    // The user's live heading dot, so turning the phone visibly turns the dial.
+                    if (liveHeading != null) {
+                        val radians = Math.toRadians(liveHeading - 90.0)
+                        val dotRadius = 5.dp.toPx()
+                        drawCircle(
+                            color = Editorial.Blue,
+                            radius = dotRadius,
+                            center = Offset(
+                                center.x + (radius * 0.8f) * cos(radians).toFloat(),
+                                center.y + (radius * 0.8f) * sin(radians).toFloat(),
+                            ),
+                        )
+                    }
                 }
             }
 

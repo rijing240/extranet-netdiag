@@ -115,7 +115,7 @@ public fun CheckupScreen(
                 }
             }
 
-            is CheckupUiState.Done -> answeredItems(state)
+            is CheckupUiState.Done -> answeredItems(state, onRun)
         }
     }
 }
@@ -204,7 +204,7 @@ private fun permissionSentence(denied: List<String>): String = when {
 }
 
 /** The answer, the path, and the measurements behind them. */
-private fun LazyListScope.answeredItems(state: CheckupUiState.Done) {
+private fun LazyListScope.answeredItems(state: CheckupUiState.Done, onRun: () -> Unit) {
     val verdict = state.verdict
     item {
         SectionCard {
@@ -224,6 +224,8 @@ private fun LazyListScope.answeredItems(state: CheckupUiState.Done) {
                     color = Editorial.Blue,
                 )
             }
+            Spacer(Modifier.height(14.dp))
+            LineButton("Run again", onClick = onRun, modifier = Modifier.fillMaxWidth())
         }
     }
 
