@@ -4,7 +4,28 @@ A network-aware Android telemetry engine: it measures what the radio is actually
 the user whose fault a slow connection is, and — once there is enough data — predicts service
 loss a few seconds before it happens.
 
-This repository is at **B2: radio timeline**, with B3 (native app chrome) in progress on its branch.
+The shipped app is built from the `b3-native-chrome` branch. Releases, and the only place to
+download the APK, are on the [releases page](#install).
+
+## Install
+
+NetDiag is distributed as a signed APK on GitHub Releases rather than through the Play Store:
+
+<https://github.com/rijing240/extranet-netdiag/releases>
+
+Download `extranet-<version>.apk`, open it, and let your browser or file manager install it. It
+needs Android 8 (API 26) or newer, and asks for location and phone state because the measurements
+are about which tower and which link the handset is on.
+
+To update, install the newer APK over the older one. Android accepts that because every release
+carries the same signing key and a higher version code. NetDiag never checks by itself: open the
+app, tap the ⓘ in the top bar, press **Check for updates**, and it reports the newest published
+build and offers to open its download page. Nothing is requested from GitHub until you tap that
+button, and an ordinary commit never tells anyone to update. See
+[`docs/release-and-updates.md`](docs/release-and-updates.md).
+
+One exception to "installs over the old one": a debug build you installed yourself (from
+`gradle :app:assembleDebug`) was signed with a different key, so uninstall that first.
 
 ## What B0 delivers
 
