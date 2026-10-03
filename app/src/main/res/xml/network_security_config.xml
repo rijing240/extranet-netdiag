@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Everything this app sends goes over TLS, with one deliberate exception.
+
+  Diagnose asks a connectivity endpoint one plain-HTTP question, because that is the only way to
+  see a carrier intercepting traffic - the redirect or the substitute page that tells a user their
+  data is finished. Over TLS that interception is invisible: it either cannot happen or shows up
+  as a certificate error, and neither answers the question. So cleartext is permitted for that one
+  host and that one host only; every other connection in the app remains TLS-only, and a mistake
+  in a probe cannot quietly downgrade anything else.
+
+  The endpoint answers with an empty 204 and no content, and receives no data about the user.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">connectivitycheck.gstatic.com</domain>
+    </domain-config>
+</network-security-config>

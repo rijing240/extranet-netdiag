@@ -57,9 +57,47 @@ class MiniThroughputProbeTest {
     }
 
     @Test
+    fun theBodyClockRunsOnlyOverTheBodyAndNotOverTheHeaders() {
+        // The clock must start when the body starts. If it ran from the end of the headers the
+        // slow-server case would be charged to the transfer, which is the mirror image of the
+        // bug this replaced - there, the fast connection was charged for its handshake.
+        val body = ByteArray(500) { it.toByte() }
+
+        // A clock frozen on the headers: the whole read costs the same as the body, so the
+        // window must not include the time spent waiting for the headers at all. With a
+        // frozen clock the span is zero, which the reader floors at one nanosecond so the
+        // divisor can never be zero - the point is that it is not the whole elapsed read.
+        var frozen = 1_000L
+        val still = MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))) { frozen }
+        assertEquals(500L, still.bytes)
+        assertEquals(1L, still.bodyNanos, "a frozen clock gives a floored window, not the header wait")
+
+        // A clock advancing 10 ms per read: the window is a small multiple of that step, never
+        // the sum of the whole response including its headers.
+        var ticks = 0
+        val stepped = MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))) {
+            ticks++
+            ticks * 10_000_000L
+        }
+        assertEquals(500L, stepped.bytes)
+        assertTrue(
+            stepped.bodyNanos in 1..(ticks * 10_000_000L),
+            "the window must come from the body reads, got ${stepped.bodyNanos} ns over $ticks ticks",
+        )
+    }
+
+    @Test
+    fun aResponseWithNoBodyReportsNoWindowSoNoRateCanBeInvented() {
+        val head = "HTTP/1.1 204 No Content\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
+        val result = MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(head))
+        assertEquals(0L, result.bytes)
+        assertEquals(0L, result.bodyNanos, "no body means no transfer window to divide by")
+    }
+
+    @Test
     fun theBodyIsCountedExactlyEvenWithoutATrailingNewline() {
         val body = ByteArray(1_000) { ((it * 37) and 0xFF).toByte() }
-        assertEquals(1_000L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).second)
+        assertEquals(1_000L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).bytes)
     }
 
     @Test
@@ -67,7 +105,7 @@ class MiniThroughputProbeTest {
         val body = byteArrayOf(0x00, 0x0D, 0x0A, 0x0D, 0x0A, 0x7F, 0x0D, 0x0A, 0xFF.toByte())
         assertEquals(
             body.size.toLong(),
-            MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).second,
+            MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).bytes,
         )
     }
 
@@ -75,21 +113,21 @@ class MiniThroughputProbeTest {
     fun theHeaderIsFoundEvenWhenItArrivesOneByteAtATime() {
         val body = ByteArray(64) { it.toByte() }
         val trickle = OneByteAtATime(ByteArrayInputStream(response(body)))
-        assertEquals(64L, MiniThroughputProbe.countBodyBytes(trickle).second)
+        assertEquals(64L, MiniThroughputProbe.countBodyBytes(trickle).bytes)
     }
 
     @Test
     fun aResponseWithNoBodyCountsNothing() {
         val head = "HTTP/1.1 204 No Content\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
-        assertEquals(0L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(head)).second)
+        assertEquals(0L, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(head)).bytes)
     }
 
     @Test
     fun theStatusCodeIsExtractedFromTheResponseHeader() {
         val body = ByteArray(10) { it.toByte() }
-        assertEquals(200, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).first)
+        assertEquals(200, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(response(body))).statusCode)
         val redirect = "HTTP/1.1 302 Found\r\nLocation: https://example.com\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
-        assertEquals(302, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(redirect)).first)
+        assertEquals(302, MiniThroughputProbe.countBodyBytes(ByteArrayInputStream(redirect)).statusCode)
     }
 
     @Test

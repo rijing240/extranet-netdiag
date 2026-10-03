@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The only thing this app ever hands to another app is a picture of a room map, written into a
+  cache subdirectory and shared by content URI. Nothing is written to shared storage and no
+  directory outside the app's own cache is exposed.
+-->
+<paths>
+    <cache-path
+        name="maps"
+        path="maps/" />
+</paths>

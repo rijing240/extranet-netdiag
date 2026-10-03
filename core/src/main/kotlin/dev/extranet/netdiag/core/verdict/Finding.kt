@@ -14,12 +14,22 @@ package dev.extranet.netdiag.core.verdict
  * @property confidence 0.0 to 1.0; the decision layer refuses to diagnose below its floor.
  * @property evidence the measured facts behind the claim, e.g. "median RSRP -105 dBm over 60
  *   samples". Facts only: advice belongs to the decision layer.
+ * @property latencyMillis the round-trip time the claim rests on, when the subject has one.
+ *   Carried as a number rather than left in the evidence text so the decision layer can compare
+ *   hops - congestion is a claim about one hop being much slower than another, and a rule that
+ *   has to parse "answered in 340 ms" out of a sentence written for a person is a rule that
+ *   breaks the first time somebody rewords the sentence.
+ * @property cause which specific thing is wrong, when the state alone is too coarse to write a
+ *   useful next step. Null means "nothing finer than [assessment] was observed"; see
+ *   [FindingCause] for why this is a type and not a phrase to be matched inside [evidence].
  */
 public data class Finding(
     public val subject: String,
     public val assessment: DiagnosisState,
     public val confidence: Double,
     public val evidence: List<String>,
+    public val latencyMillis: Long? = null,
+    public val cause: FindingCause? = null,
 ) {
     init {
         require(subject.isNotBlank()) { "a finding must name its subject" }

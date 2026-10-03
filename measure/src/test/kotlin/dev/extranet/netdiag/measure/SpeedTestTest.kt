@@ -58,19 +58,27 @@ class SpeedTestTest {
         // Integer division truncates, so the notice shows the floor: 31 MB is understated,
         // which is the honest direction for a data cost.
         assertTrue(notice.contains("31 MB"), notice)
-        assertTrue(notice.contains("25 s"), notice)
+        assertTrue(notice.contains("14 s"), notice)
     }
 
     @Test
-    fun theEngineStaysInsideATwentyFiveSecondTest() {
-        // Worst case: 10 ping rounds x 3 s (only on a dead network, where later stages fail
-        // fast) + warm-up 1.5 s + two 6 s transfers. On any working link the whole test is
-        // bounded by the two 6 s windows plus a second of ping.
+    fun theEngineStaysInsideAFourteenSecondTest() {
+        // Worst case: 3 ping rounds x 1.5 s (only on a dead network, where later stages fail
+        // fast) + warm-up 0.8 s + two 4 s transfers = 13.3 s. On a working link the ping rounds
+        // answer in well under a second and the whole test is bounded by the two transfer
+        // windows - which is the promise a user is actually told.
         val worstSeconds = SpeedTest.PING_ROUNDS * SpeedTest.PING_TIMEOUT_MILLIS / 1_000.0 +
             SpeedTest.WARM_UP_SECONDS + SpeedTest.TRANSFER_SECONDS * 2
-        assertTrue(worstSeconds <= 45.0, "a dead network must end within 45 s, was $worstSeconds")
-        assertTrue(SpeedTest.TOTAL_SECONDS_CAP == 25)
-        assertTrue(SpeedTest.TRANSFER_SECONDS == 6.0, "six seconds per stage is the speed promise")
+        assertTrue(worstSeconds <= 14.0, "a dead network must end within 14 s, was $worstSeconds")
+        assertTrue(SpeedTest.TOTAL_SECONDS_CAP == 14)
+        // Four seconds per stage is the shortest window that is still a rate rather than a
+        // sample. Going below it trades a real figure for a quicker one, which is the wrong
+        // way round for a number people act on.
+        assertTrue(SpeedTest.TRANSFER_SECONDS >= 4.0, "a transfer window under four seconds is not a rate")
+        assertTrue(SpeedTest.PING_ROUNDS >= 3, "fewer than three rounds leaves no median")
+        // Each transfer window also bounds its stage in the code: the post-handshake read
+        // timeout keeps a stalled fetch from sitting on the connect timeout.
+        assertTrue(SpeedTest.POST_HANDSHAKE_TIMEOUT_MILLIS <= SpeedTest.TRANSFER_SECONDS.toInt() * 1_000)
     }
 
     @Test

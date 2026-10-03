@@ -1,9 +1,31 @@
 import java.net.URI
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+/**
+ * The release signing key, read from a file that is never committed.
+ *
+ * An Android update has to be signed with the same key as the build already installed, which makes
+ * the release key the app's identity rather than a build detail: lose it and nobody who installed
+ * the app can ever update it again, leak it and somebody else can publish a build that installs
+ * over it. So it lives outside the repository (`keystore/release.jks`), its passwords live in
+ * `keystore.properties` beside it (git-ignored, with a documented template checked in), and CI
+ * writes both from repository secrets.
+ *
+ * When the file is absent - a fresh clone, a pull request, a debug build - the release build is
+ * unsigned rather than broken. That is the difference between "publishing needs a key" and
+ * "everything needs a key", and only the first is true.
+ */
+val releaseKeystoreFile = rootProject.file("keystore.properties")
+val releaseSigning: Properties? = if (releaseKeystoreFile.exists()) {
+    Properties().apply { releaseKeystoreFile.inputStream().use { load(it) } }
+} else {
+    null
 }
 
 android {
@@ -31,11 +53,23 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Created only when a key is configured, so nothing here can fail for want of a secret.
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigning != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

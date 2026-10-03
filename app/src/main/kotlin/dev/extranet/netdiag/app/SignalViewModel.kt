@@ -9,6 +9,7 @@ import dev.extranet.netdiag.measure.Observations
 import dev.extranet.netdiag.measure.RadioSample
 import dev.extranet.netdiag.measure.RadioTimeline
 import dev.extranet.netdiag.measure.SignalCompass
+import dev.extranet.netdiag.measure.SignalTrend
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +39,8 @@ public sealed interface SignalUiState {
         public val latest: RadioSample?,
         public val samplesSnapshot: List<RadioSample>,
         public val csv: String?,
+        /** The warmer/colder trend, or null until the window fills. */
+        public val trend: SignalTrend.Reading?,
     ) : SignalUiState
 
     /** The session itself failed. */
@@ -66,6 +69,7 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
     private val rules = DiagnosisRules()
     private var session: TimelineSession? = null
     private var sessionJob: Job? = null
+    private val trend = SignalTrend()
 
     /**
      * The live heading, fed in by the route's sensor source.
@@ -93,6 +97,7 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
 
         val active = TimelineSession(context).also { session = it }
         val timeline = active.timeline
+        trend.reset()
 
         sessionJob = viewModelScope.launch {
             try {
@@ -104,6 +109,7 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
                     latest = null,
                     samplesSnapshot = emptyList(),
                     csv = null,
+                    trend = null,
                 )
                 // Registering telephony listeners wants the main thread; sampling does not.
                 withContext(Dispatchers.Main) { active.start() }
@@ -178,6 +184,9 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
         } else {
             samples
         }
+        // Every sample's strength feeds the trend, not just the newest: a walk's shape is in
+        // the whole window, and a gap (null RSRP) is skipped by the tracker, not counted.
+        for (sample in samples) trend.append(sample.rsrpDbm)
         mutableState.value = SignalUiState.Live(
             seconds = seconds,
             finished = finished,
@@ -186,6 +195,7 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
             latest = withHeadings.lastOrNull(),
             samplesSnapshot = withHeadings,
             csv = csv,
+            trend = trend.evaluate(),
         )
     }
 
@@ -204,8 +214,11 @@ public class SignalViewModel(application: Application) : AndroidViewModel(applic
     }
 
     private companion object {
-        /** One minute of sampling: long enough to walk a room and turn around once. */
-        const val SESSION_MILLIS: Long = 60_000L
+        /**
+         * A minute and a half: a slow full circle takes about half a minute at the radio's
+         * once-a-second reporting rate, which leaves time to turn again and confirm the answer.
+         */
+        const val SESSION_MILLIS: Long = 90_000L
 
         /** The screen redraws once a second, matching the sampler's own cadence. */
         const val TICK_MILLIS: Long = 1_000L

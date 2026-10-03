@@ -20,12 +20,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material.icons.outlined.NetworkCheck
 import androidx.compose.material.icons.outlined.Radar
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SignalCellularAlt
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -80,16 +83,32 @@ public class MainActivity : ComponentActivity() {
     }
 }
 
-/** The product's three tabs. Hotspot and History are reached from a result, not from here. */
+/**
+ * The product's tabs, in the order a person asks the questions.
+ *
+ * Signal first, because "which way should I face" is the question someone asks while standing
+ * still with a phone in their hand; the Room Map next, because "where in here is it better" is
+ * the same question with a walk attached; Diagnose after that, because it is the one you reach
+ * for when the signal looks fine and the internet does not work; and Speed last, because it is a
+ * measurement rather than a search.
+ */
 private enum class Screen(val label: String, val icon: ImageVector) {
-    CAPABILITY("Checkup", Icons.Outlined.NetworkCheck),
-    WATERFALL("Speed", Icons.Outlined.Speed),
     TIMELINE("Signal", Icons.Outlined.Radar),
+    MAP("Room Map", Icons.Outlined.Map),
+    CAPABILITY("Diagnose", Icons.Outlined.NetworkCheck),
+    WATERFALL("Speed", Icons.Outlined.Speed),
 }
 
 @Composable
 private fun NetDiagApp() {
     var current by remember { mutableStateOf(Screen.CAPABILITY) }
+    var updatesOpen by remember { mutableStateOf(false) }
+
+    // The update notice is a dialog over whatever screen is showing, and it is only ever opened
+    // by a tap on the info action. Opening it does not check anything: the request waits for the
+    // button inside it, because an app that phones home when a sheet is opened is an app that
+    // phones home.
+    if (updatesOpen) UpdatesRoute(onDismiss = { updatesOpen = false })
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -97,14 +116,21 @@ private fun NetDiagApp() {
         // The bars carry their own insets: TopAppBar pads against the status bar and
         // NavigationBar against the gesture bar, so the content would otherwise be padded twice.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = { NetDiagTopBar(current) },
+        topBar = { NetDiagTopBar(current, onOpenUpdates = { updatesOpen = true }) },
         bottomBar = { NetDiagBottomBar(current, onSelect = { current = it }) },
     ) { innerPadding ->
         Box(Modifier.fillMaxSize().padding(innerPadding)) {
             when (current) {
                 Screen.CAPABILITY -> CheckupRoute(Modifier.fillMaxSize())
                 Screen.WATERFALL -> SpeedRoute(Modifier.fillMaxSize())
-                Screen.TIMELINE -> SignalRoute(Modifier.fillMaxSize())
+                Screen.TIMELINE -> SignalRoute(
+                    modifier = Modifier.fillMaxSize(),
+                    onOpenRoomMap = { current = Screen.MAP },
+                )
+                Screen.MAP -> RoomMapRoute(
+                    modifier = Modifier.fillMaxSize(),
+                    onOpenSignal = { current = Screen.TIMELINE },
+                )
             }
         }
     }
@@ -113,20 +139,32 @@ private fun NetDiagApp() {
 /** The top bar: the app name small over the tab's large title, on the canvas colour. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NetDiagTopBar(screen: Screen) {
+private fun NetDiagTopBar(screen: Screen, onOpenUpdates: () -> Unit) {
     TopAppBar(
+        actions = {
+            // The way to the version and the update check. One icon, no badge, no dot: there is
+            // nothing to tell the user until they ask, because nothing is checked until they ask.
+            IconButton(onClick = onOpenUpdates) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = "Version and updates",
+                    tint = Editorial.InkSoft,
+                )
+            }
+        },
         title = {
             Column {
                 Text(
-                    "NetDiag",
+                    "extranet",
                     style = MaterialTheme.typography.labelMedium,
                     color = Editorial.Blue,
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     screen.label,
-                    style = MaterialTheme.typography.displaySmall,
+                    style = CappedDisplay(MaterialTheme.typography.displaySmall),
                     color = Editorial.Ink,
+                    maxLines = 1,
                 )
             }
         },
@@ -193,7 +231,7 @@ private fun appSettingsIntent(context: android.content.Context): Intent =
  * the NeedPermission state again, whose Settings button is the recovery path.
  */
 @Composable
-private fun rememberRadioPermissionLauncher(onDone: () -> Unit): androidx.activity.compose.ManagedActivityResultLauncher<Array<String>, Map<String, Boolean>> {
+private fun rememberRadioPermissionLauncher(onDone: () -> Unit): androidx.activity.compose.ManagedActivityResultLauncher<Array<String>, kotlin.collections.Map<String, Boolean>> {
     return rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         // Both answers re-run: granted, the checkup proceeds; denied, the state machine
         // rebuilds NeedPermission with the same names and the screen shows the Settings path.
@@ -202,36 +240,42 @@ private fun rememberRadioPermissionLauncher(onDone: () -> Unit): androidx.activi
 }
 
 @Composable
-private fun SignalRoute(modifier: Modifier = Modifier) {
+private fun SignalRoute(modifier: Modifier = Modifier, onOpenRoomMap: () -> Unit) {
     val viewModel: SignalViewModel = viewModel()
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val requestPermissions = rememberRadioPermissionLauncher { viewModel.start() }
 
-    // The radar's live dot wants a heading stream, not the sampler's once-a-second read. The
-    // source is owned by the route and lives exactly as long as the tab is on screen. The value
-    // is polled through produceState at radar-frame pace: the sensor delivers far faster than
-    // the dial needs, and a volatile read per frame is cheaper than a flow per event.
-    val headingSource = remember { LiveHeadingSource(context) }
-    androidx.compose.runtime.DisposableEffect(Unit) {
-        headingSource.start()
-        onDispose { headingSource.stop() }
+    // One engine per visit to the tab. It owns the compass, the signal feed and the step counter,
+    // and is ticked once per drawn frame, so the dial turns as smoothly as the phone does. The
+    // frame goes down as State rather than as a value: the radar reads it while drawing, so a
+    // sixty-a-second heading redraws the dial without recomposing the screen around it.
+    val engine = remember { RadarEngine(context) }
+    androidx.compose.runtime.DisposableEffect(engine) {
+        engine.startListening()
+        onDispose { engine.stopListening() }
     }
-    val liveHeading by androidx.compose.runtime.produceState<Double?>(initialValue = null, headingSource) {
+    val radarFrame = remember { mutableStateOf(engine.tick()) }
+
+    // A scan only learns while the session is running; the dial turns the rest of the time.
+    val scanning = (state as? SignalUiState.Live)?.finished == false
+    androidx.compose.runtime.LaunchedEffect(scanning) { engine.setRecording(scanning) }
+
+    androidx.compose.runtime.LaunchedEffect(engine) {
         while (true) {
-            value = headingSource.headingDegrees()
-            kotlinx.coroutines.delay(50)
+            androidx.compose.runtime.withFrameNanos {
+                val frame = engine.tick()
+                radarFrame.value = frame
+                // The session log records the same heading the dial shows.
+                viewModel.liveHeadingDegrees = frame.headingDegrees
+            }
         }
     }
 
-    // The view model publishes the live heading into the session's samples on every tick, so
-    // the radar's wedges fill even where the sampler's own compass read comes back empty.
-    viewModel.liveHeadingDegrees = liveHeading
-
     SignalScreen(
         state = state,
-        liveHeading = liveHeading,
-        tiltOnly = headingSource.isTiltOnly,
+        radar = radarFrame,
+        hasCompass = engine.hasCompass,
         onSample = {
             // The view model's own gate decides whether a dialog or a session is next, so the
             // permission map lives in one place and the route only carries the launcher.
@@ -239,15 +283,91 @@ private fun SignalRoute(modifier: Modifier = Modifier) {
             if (denied.isEmpty()) viewModel.start() else requestPermissions.launch(denied.toTypedArray())
         },
         onStop = { viewModel.stop() },
+        onOpenRoomMap = onOpenRoomMap,
         onShareLog = { csv ->
             val intent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/csv"
-                putExtra(Intent.EXTRA_SUBJECT, "NetDiag radio log")
+                putExtra(Intent.EXTRA_SUBJECT, "extranet radio log")
                 putExtra(Intent.EXTRA_TEXT, csv)
             }
             context.startActivity(Intent.createChooser(intent, "Share the radio log"))
         },
         onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun RoomMapRoute(modifier: Modifier = Modifier, onOpenSignal: () -> Unit) {
+    val viewModel: RoomMapViewModel = viewModel()
+    val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
+    val requestPermissions = rememberRadioPermissionLauncher { viewModel.start() }
+
+    // Same shape as the Signal tab: one engine per visit, ticked once per drawn frame, with the
+    // frame handed down as State so the trail can grow without recomposing the screen around it.
+    val engine = remember { RoomMapEngine(context) }
+    androidx.compose.runtime.DisposableEffect(engine) {
+        engine.startListening()
+        onDispose { engine.stopListening() }
+    }
+    val mapFrame = remember { mutableStateOf(engine.tick()) }
+
+    // The trail only learns while the walk is running; the sensors run the whole time the tab is
+    // open so the arrow is already pointing the right way when the user taps Start.
+    val walking = (state as? RoomMapUiState.Live)?.finished == false
+    androidx.compose.runtime.LaunchedEffect(walking) { engine.setRecording(walking) }
+
+    androidx.compose.runtime.LaunchedEffect(engine) {
+        while (true) {
+            androidx.compose.runtime.withFrameNanos { mapFrame.value = engine.tick() }
+        }
+    }
+
+    RoomMapScreen(
+        state = state,
+        map = mapFrame,
+        canMap = engine.canMap,
+        onStart = {
+            val denied = MeasurementPermissions.missing(context, MeasurementPermissions.SIGNAL)
+            if (denied.isEmpty()) viewModel.start() else requestPermissions.launch(denied.toTypedArray())
+        },
+        onStop = { viewModel.stop() },
+        onReset = { viewModel.reset() },
+        onShare = { summary ->
+            val frame = mapFrame.value
+            val file = RoomMapPicture.write(
+                context = context,
+                snapshot = frame.map,
+                startHeadingDegrees = frame.startHeadingDegrees,
+                nowX = frame.xMeters,
+                nowY = frame.yMeters,
+                headingDegrees = frame.headingDegrees,
+                summary = summary,
+            )
+            // The picture when there is one to send, and the words on their own when there is
+            // not: a share sheet that offers nothing is worse than one that offers text.
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = if (file != null) "image/png" else "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "extranet room map")
+                putExtra(Intent.EXTRA_TEXT, summary)
+                if (file != null) {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file,
+                    )
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+            }
+            context.startActivity(Intent.createChooser(intent, "Share room map"))
+        },
+        onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
+        onOpenSignal = onOpenSignal,
+        // The screen owns the size, the engine owns the fit. Told on every layout rather than
+        // assumed, because the same map is drawn at whatever size this phone's panel gives it.
+        onViewport = { width, height, padding -> engine.setViewport(width, height, padding) },
         modifier = modifier,
     )
 }
@@ -265,7 +385,16 @@ private fun CheckupRoute(modifier: Modifier = Modifier) {
             val denied = MeasurementPermissions.missing(context, MeasurementPermissions.CHECKUP)
             if (denied.isEmpty()) viewModel.run() else requestPermissions.launch(denied.toTypedArray())
         },
+        onCancel = { viewModel.cancel() },
         onOpenSettings = { context.startActivity(appSettingsIntent(context)) },
+        onShareReport = { report ->
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "extranet report")
+                putExtra(Intent.EXTRA_TEXT, report)
+            }
+            context.startActivity(Intent.createChooser(intent, "Share report"))
+        },
         modifier = modifier,
     )
 }

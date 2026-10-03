@@ -16,7 +16,7 @@ import javax.net.ssl.SSLSocketFactory
  * The 1 MB reality check stays what it is: a quick verdict a user can run anywhere. This engine
  * is the Speed tab's real answer, and it differs in three ways that matter to the number:
  *
- * - **Ping first, with jitter.** Ten TCP-connect rounds give a median and a spread; the spread
+ * - **Ping first, with jitter.** Five TCP-connect rounds give a median and a spread; the spread
  *   is jitter, and it is the difference between "150 ms, fine for calls" and "150 ms plus
  *   80 ms of wobble, calls will stutter".
  * - **Download with a discarded warm-up.** TCP slow-start means the first seconds of a
@@ -110,10 +110,13 @@ public class SpeedTest(
     }
 
     /**
-     * Ten connect rounds against the transfer host: median latency and the spread around it.
+     * Five connect rounds against the transfer host: median latency and the spread around it.
      * Jitter is the mean absolute difference between consecutive rounds - the RFC 3550 sense,
      * not a standard deviation, because the question is "does the wait wobble", not "how
      * gaussian is it".
+     *
+     * Five rounds, not ten: each round can wait out its full timeout on a stalled network, and
+     * ten rounds at three seconds was thirty seconds of the test's worst case by itself.
      */
     private fun pingStage(): Pair<StageResult, Pair<Double?, Double?>> {
         val address = runCatching { InetAddress.getByName(SPEED_HOST) }.getOrNull()
@@ -175,11 +178,16 @@ public class SpeedTest(
                 val kbps = rateKbps(bytes, elapsed)
                 StageResult(label, bytes > 0, kbps.takeIf { bytes > 0 }, "$bytes B in %.1f s".format(elapsed)) to kbps
             } else {
-                val sentNanos = clock()
-                val bytes = postBytes(UPLOAD_BYTES, TRANSFER_SECONDS)
-                val elapsed = (clock() - sentNanos) / 1_000_000_000.0
-                val kbps = rateKbps(bytes, elapsed)
-                StageResult(label, bytes > 0, kbps.takeIf { bytes > 0 }, "$bytes B in %.1f s".format(elapsed)) to kbps
+                val sent = postBytes(UPLOAD_BYTES, TRANSFER_SECONDS) { elapsed, total ->
+                    onProgress(rateKbps(total, elapsed), total.toDouble() / UPLOAD_BYTES)
+                }
+                val kbps = rateKbps(sent.first, sent.second)
+                StageResult(
+                    label,
+                    sent.first > 0,
+                    kbps.takeIf { sent.first > 0 },
+                    "${sent.first} B in %.1f s".format(sent.second),
+                ) to kbps
             }
         } catch (failure: Exception) {
             StageResult(
@@ -216,6 +224,9 @@ public class SpeedTest(
             parameters.endpointIdentificationAlgorithm = "HTTPS"
             socket.sslParameters = parameters
             socket.startHandshake()
+            // A mid-transfer read that stalls must fail inside the stage's budget, not sit for
+            // the full connect timeout; on a working-but-throttled link reads arrive far faster.
+            socket.soTimeout = POST_HANDSHAKE_TIMEOUT_MILLIS
 
             val request = "GET $path HTTP/1.1\r\nHost: $SPEED_HOST\r\n" +
                 "User-Agent: ${ProbeTarget.USER_AGENT}\r\n" +
@@ -252,10 +263,20 @@ public class SpeedTest(
 
     /**
      * POST over TLS to an echo endpoint, writing [bytes] of payload or writing for
-     * [limitSeconds], whichever comes first, and returning what was actually sent. The upload
-     * measures the send; the response is drained afterwards so the socket closes cleanly.
+     * [limitSeconds], whichever comes first.
+     *
+     * The measured window is the send only - connect, handshake and flush of the final chunk
+     * excluded, because on a throttled link the handshake alone cost seconds and was reported
+     * as upload speed. The echo response is drained afterwards so the socket closes cleanly,
+     * but under a short wall-clock budget: draining an echo of a 5 MB upload through a slow
+     * link once held this stage open for over fifteen untimed seconds, which the user read as
+     * the test hanging.
      */
-    private fun postBytes(bytes: Long, limitSeconds: Double): Long {
+    private fun postBytes(
+        bytes: Long,
+        limitSeconds: Double,
+        onSample: (Double, Long) -> Unit,
+    ): Pair<Long, Double> {
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val address = InetAddress.getByName(SPEED_HOST)
         val socket = factory.createSocket() as SSLSocket
@@ -272,6 +293,7 @@ public class SpeedTest(
                 "User-Agent: ${ProbeTarget.USER_AGENT}\r\n" +
                 "Content-Type: application/octet-stream\r\n" +
                 "Content-Length: $bytes\r\nConnection: close\r\n\r\n"
+            socket.soTimeout = POST_HANDSHAKE_TIMEOUT_MILLIS
             val output: OutputStream = socket.outputStream
             output.write(head.toByteArray(Charsets.US_ASCII))
 
@@ -284,15 +306,23 @@ public class SpeedTest(
                 val n = minOf(chunk.size.toLong(), bytes - sent).toInt()
                 output.write(chunk, 0, n)
                 sent += n
+                if (elapsedSec > 0.05) onSample(elapsedSec, sent)
             }
             output.flush()
-            // Drain the response so the connection closes cleanly; none of this is timed.
+            // The flush carries at most one residual chunk, sub-second even on a slow link;
+            // everything measured ends here.
+            val measuredSeconds = (clock() - startNanos) / 1_000_000_000.0
+
+            // Drain under a deadline, untimed: the read timeout bounds one blocked read and the
+            // wall clock bounds the whole loop, so the stage cannot outlive its budget here.
+            socket.soTimeout = DRAIN_TIMEOUT_MILLIS
             runCatching {
                 val input: InputStream = socket.inputStream
                 val drain = ByteArray(8 * 1024)
-                while (input.read(drain) >= 0) { /* to EOF */ }
+                val deadline = clock() + DRAIN_BUDGET_NANOS
+                while (clock() < deadline && input.read(drain) >= 0) { /* discard */ }
             }
-            return sent
+            return sent to measuredSeconds
         } finally {
             runCatching { socket.close() }
         }
@@ -323,15 +353,24 @@ public class SpeedTest(
         /**
          * Seconds each transfer stage may run.
          *
-         * Six seconds is the whole point of the redesign: on a 4 Mbps link that is ~3 MB, on a
-         * 100 Mbps link the payload cap ends it first. The rate is computed over the measured
-         * window either way, so the number does not depend on how long the stage ran - only on
-         * the warm-up having absorbed the TCP ramp before it started.
+         * Four seconds, down from six. The warm-up has already absorbed the TCP ramp, so the
+         * measured window is a steady interval and bytes over that window is the throughput. The
+         * extra two seconds per direction bought no accuracy - on a 4 Mbps link they added about
+         * a megabyte to a figure the four-second window had already settled - while making the
+         * test four seconds longer for a number that did not change. The rate is computed over
+         * the measured window either way, so nothing depends on the stage filling its budget.
          */
-        public const val TRANSFER_SECONDS: Double = 6.0
+        public const val TRANSFER_SECONDS: Double = 4.0
 
-        /** Seconds the throwaway warm-up fetch may run: short, it only needs to open the throttle. */
-        public const val WARM_UP_SECONDS: Double = 1.5
+        /**
+         * Seconds the throwaway warm-up fetch may run.
+         *
+         * Eight tenths, down from one and a half. Slow start on a modern link is over well
+         * inside a second, and what the warm-up is for is getting past it, not sampling the
+         * connection. It is a cap rather than a target: on a fast link it returns as soon as
+         * the bytes are in hand, so the saving is larger the better the connection is.
+         */
+        public const val WARM_UP_SECONDS: Double = 0.8
 
         /** Bytes the measured download pulls, when the link is fast enough to hit the cap. */
         public const val DOWNLOAD_BYTES: Long = 25_000_000L
@@ -342,11 +381,40 @@ public class SpeedTest(
         /** Bytes uploaded, when the link is fast enough to hit the cap. */
         public const val UPLOAD_BYTES: Long = 5_000_000L
 
-        /** Connect rounds the ping stage takes. */
-        public const val PING_ROUNDS: Int = 10
+        /**
+         * Connect rounds the ping stage takes.
+         *
+         * Three, down from five. The stage reports a median, and a median of three is a median;
+         * what five bought was protection against a single slow round, which the timeout already
+         * bounds. On a bad link the saving is largest - three rounds of a 1.5 s timeout instead
+         * of five - which is exactly when a person least wants to sit waiting.
+         *
+         * Distinct from `TimelineBudget.THROUGHPUT_PING_ROUNDS`, which is the round count the
+         * checkup's own mini probe declares in its evidence. This is the user-facing speed test.
+         */
+        public const val PING_ROUNDS: Int = 3
 
         /** Timeout for one ping round, milliseconds. */
-        public const val PING_TIMEOUT_MILLIS: Int = 3_000
+        public const val PING_TIMEOUT_MILLIS: Int = 1_500
+
+        /**
+         * Read timeout once a stage is connected, milliseconds. Connect keeps the longer
+         * [STAGE_TIMEOUT_MILLIS]; after the handshake a stalled read is a failed transfer and
+         * should be reported in seconds, not sat on.
+         *
+         * Deliberately shorter than a transfer window. While [TRANSFER_SECONDS] was six this
+         * could afford five, but a read timeout longer than the window it sits inside means a
+         * stalled fetch is still waiting when the window has closed, and the stage overruns the
+         * budget it is supposed to be bounded by. Three seconds of silence inside a four-second
+         * transfer is a link that has stopped, not one that is slow.
+         */
+        public const val POST_HANDSHAKE_TIMEOUT_MILLIS: Int = 3_000
+
+        /** Read timeout while draining the echo response, milliseconds. */
+        public const val DRAIN_TIMEOUT_MILLIS: Int = 1_000
+
+        /** Wall-clock budget for the whole drain, in nanoseconds. */
+        public const val DRAIN_BUDGET_NANOS: Long = 1_500_000_000L
 
         /** Timeout for each transfer stage, milliseconds: a dead link ends the stage, not the app. */
         public const val STAGE_TIMEOUT_MILLIS: Int = 15_000
@@ -364,7 +432,10 @@ public class SpeedTest(
             TOTAL_SECONDS_CAP,
         )
 
-        /** Worst-case wall clock, rounded up: ping, warm-up, two transfers. */
-        public const val TOTAL_SECONDS_CAP: Int = 25
+        /**
+         * Worst-case wall clock, rounded up: three ping rounds at 1.5 s on a dead network, the
+         * 0.8 s warm-up, and two 4 s transfer windows.
+         */
+        public const val TOTAL_SECONDS_CAP: Int = 14
     }
 }

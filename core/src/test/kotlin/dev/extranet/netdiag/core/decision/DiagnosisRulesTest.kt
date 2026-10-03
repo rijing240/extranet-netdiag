@@ -2,8 +2,10 @@ package dev.extranet.netdiag.core.decision
 
 import dev.extranet.netdiag.core.verdict.DiagnosisState
 import dev.extranet.netdiag.core.verdict.Finding
+import dev.extranet.netdiag.core.verdict.FindingCause
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -37,6 +39,27 @@ class DiagnosisRulesTest {
     private fun throughput(assessment: DiagnosisState, confidence: Double = 0.9): Finding =
         finding(Subjects.THROUGHPUT, assessment, confidence, "1 MB in 0.5 s, 16.0 Mbps")
 
+    /** A hop finding that also carries the round trip it measured, as the inference layer does. */
+    private fun hop(subject: String, latencyMillis: Long): Finding = Finding(
+        subject = subject,
+        assessment = DiagnosisState.GOOD,
+        confidence = 0.85,
+        evidence = listOf("$subject answered in $latencyMillis ms"),
+        latencyMillis = latencyMillis,
+    )
+
+    private fun mobileData(cause: FindingCause, assessment: DiagnosisState = DiagnosisState.OFFLINE): Finding =
+        Finding(
+            subject = Subjects.MOBILE_DATA,
+            assessment = assessment,
+            confidence = 0.9,
+            evidence = listOf("the carrier has switched mobile data off on this SIM"),
+            cause = cause,
+        )
+
+    private fun onWifi(signal: DiagnosisState = DiagnosisState.GOOD): Finding =
+        Finding(Subjects.SIGNAL, signal, 0.9, listOf("median -48 dBm over 30 samples on WIFI"))
+
     @Test
     fun bothHopsDeadNamesTheLocalLinkRatherThanHardwareTheUserMayNotHave() {
         val verdict = rules.checkup(listOf(localLink(DiagnosisState.OFFLINE), internet(DiagnosisState.OFFLINE)))
@@ -52,6 +75,7 @@ class DiagnosisRulesTest {
         val verdict = rules.checkup(listOf(internet(DiagnosisState.OFFLINE)))
         assertEquals(DiagnosisState.OFFLINE, verdict.state)
         assertTrue(verdict.what.contains("the local link was not tested"))
+        assertTrue(verdict.where!!.contains("not tested"))
         assertTrue(
             verdict.evidence.contains("connectivitycheck.gstatic.com: 42 ms"),
             "the only evidence available is the internet hop's own, and it must be shown",
@@ -66,7 +90,7 @@ class DiagnosisRulesTest {
     }
 
     @Test
-    fun reachabilityOutranksSpeedSoADeadLinkIsNeverCalledSlow() {
+    fun aFailedReachabilityProbeDoesNotOverrideAWorkingPayloadTransfer() {
         val verdict = rules.checkup(
             listOf(
                 localLink(DiagnosisState.GOOD),
@@ -74,7 +98,13 @@ class DiagnosisRulesTest {
                 throughput(DiagnosisState.SLOW),
             ),
         )
-        assertEquals(DiagnosisState.OFFLINE, verdict.state)
+        assertEquals(DiagnosisState.FAIR, verdict.state)
+        // The fault belongs to the one destination that stayed silent. The transfer is the
+        // evidence that the line itself carried a megabyte, so the ISP must not be named as
+        // the place to look: that would send someone to their router over one dead host.
+        assertTrue(verdict.where!!.contains("destination"), "got: ${verdict.where}")
+        assertFalse(verdict.where.contains("ISP"), "got: ${verdict.where}")
+        assertTrue(verdict.action!!.contains("may be unavailable"), "got: ${verdict.action}")
     }
 
     @Test
@@ -209,6 +239,131 @@ class DiagnosisRulesTest {
         val verdict = rules.signal(listOf(finding(Subjects.SIGNAL, DiagnosisState.UNKNOWN, confidence = 0.0, evidence = "only 2 of 60 samples carried an RSRP")))
         assertEquals(DiagnosisState.UNKNOWN, verdict.state)
         assertTrue(verdict.evidence.contains("only 2 of 60 samples carried an RSRP"))
+    }
+
+    @Test
+    fun aCarrierThatSwitchedDataOffOutranksEveryReachabilityAnswer() {
+        // A carrier restriction should be diagnosed before failures that might otherwise be
+        // blamed on the network or the user's spot, and
+        // every one of those instructions would waste their afternoon.
+        val verdict = rules.checkup(
+            listOf(
+                signal(DiagnosisState.GOOD),
+                mobileData(FindingCause.CARRIER_BLOCKED),
+                localLink(DiagnosisState.OFFLINE),
+                internet(DiagnosisState.OFFLINE),
+            ),
+        )
+        assertEquals(DiagnosisState.OFFLINE, verdict.state)
+        assertTrue(verdict.what.contains("carrier has blocked mobile data"))
+        assertTrue(
+            verdict.action!!.contains("balance") || verdict.action!!.contains("top up"),
+            "the instruction must be about the allowance, not the router: ${verdict.action}",
+        )
+        assertEquals("Your mobile carrier or account", verdict.where)
+    }
+
+    @Test
+    fun theThreeThingsThatCanStopMobileDataAreToldApart() {
+        val byUser = rules.checkup(
+            listOf(signal(DiagnosisState.GOOD), mobileData(FindingCause.USER_DISABLED), internet(DiagnosisState.OFFLINE)),
+        )
+        assertTrue(byUser.what.contains("switched off on this phone"), "got: ${byUser.what}")
+        assertTrue(byUser.action!!.contains("Turn mobile data on"), "got: ${byUser.action}")
+
+        val byPolicy = rules.checkup(
+            listOf(signal(DiagnosisState.GOOD), mobileData(FindingCause.POLICY_BLOCKED), internet(DiagnosisState.OFFLINE)),
+        )
+        assertTrue(byPolicy.what.contains("policy"), "got: ${byPolicy.what}")
+        assertTrue(byPolicy.action!!.contains("administrator"), "got: ${byPolicy.action}")
+
+        // A carrier block is the one that gets mistaken for an outage, and the one the phone
+        // cannot see inside: it must point at the bundle without claiming the bundle is spent.
+        val byCarrier = rules.checkup(
+            listOf(signal(DiagnosisState.GOOD), mobileData(FindingCause.CARRIER_BLOCKED), internet(DiagnosisState.OFFLINE)),
+        )
+        assertTrue(byCarrier.what.contains("carrier"), "got: ${byCarrier.what}")
+        assertTrue(byCarrier.what.contains("can't confirm"), "got: ${byCarrier.what}")
+        assertTrue(byCarrier.action!!.contains("balance"), "got: ${byCarrier.action}")
+    }
+
+    @Test
+    fun mobileDataThatIsSwitchedOffIsNotBlameWhileThePhoneIsOnWifi() {
+        // On Wi-Fi the allowance has nothing to do with the connection being tested, so the
+        // normal reachability answer must survive.
+        val verdict = rules.checkup(
+            listOf(
+                onWifi(),
+                mobileData(FindingCause.CARRIER_BLOCKED),
+                localLink(DiagnosisState.GOOD),
+                internet(DiagnosisState.OFFLINE),
+            ),
+        )
+        assertEquals("Past the Wi-Fi router: the broadband line or the upstream network", verdict.where)
+    }
+
+    @Test
+    fun aSlowWayOutToTheInternetIsCalledCongestionNotAFault() {
+        val verdict = rules.checkup(
+            listOf(
+                onWifi(),
+                hop(Subjects.FIRST_HOP, 3L),
+                hop(Subjects.INTERNET_HOP, 780L),
+                throughput(DiagnosisState.SLOW),
+            ),
+        )
+        assertEquals(DiagnosisState.SLOW, verdict.state)
+        assertTrue(verdict.what.contains("busy"), "got: ${verdict.what}")
+        assertTrue(verdict.where!!.contains("not your phone"))
+        assertTrue(
+            verdict.evidence.contains("the local link answered in 3 ms, so the delay is not on your side"),
+            "congestion is a claim about the split between the hops, so both numbers must be shown",
+        )
+    }
+
+    @Test
+    fun aFarButQuickInternetHostIsNotCalledCongestion() {
+        val verdict = rules.checkup(
+            listOf(
+                onWifi(),
+                hop(Subjects.FIRST_HOP, 3L),
+                hop(Subjects.INTERNET_HOP, 90L),
+                throughput(DiagnosisState.SLOW),
+            ),
+        )
+        assertEquals("The network between your phone and the internet", verdict.where)
+        assertTrue(!verdict.what.contains("busy"))
+    }
+
+    @Test
+    fun slowDataOnAWeakRadioIsNotCalledCongestion() {
+        // Both produce slow data, and only one of them is worth taking to the ISP's door.
+        val verdict = rules.checkup(
+            listOf(
+                signal(DiagnosisState.WEAK),
+                hop(Subjects.FIRST_HOP, 3L),
+                hop(Subjects.INTERNET_HOP, 900L),
+                throughput(DiagnosisState.SLOW),
+            ),
+        )
+        assertTrue(!verdict.what.contains("busy"), "got: ${verdict.what}")
+        assertEquals("The network between your phone and the internet", verdict.where)
+    }
+
+    @Test
+    fun onCellularTheLocalHopIsTheCarriersOwnSoOnlyTheAbsoluteFloorApplies() {
+        // Over cellular the first hop is the carrier's core, so comparing it with the internet
+        // hop would compare the carrier with itself. A slow absolute time still counts.
+        val verdict = rules.checkup(
+            listOf(
+                signal(DiagnosisState.GOOD),
+                hop(Subjects.FIRST_HOP, 600L),
+                hop(Subjects.INTERNET_HOP, 640L),
+                throughput(DiagnosisState.SLOW),
+            ),
+        )
+        assertTrue(verdict.what.contains("busy"), "got: ${verdict.what}")
+        assertTrue(verdict.action!!.contains("carrier's side"))
     }
 
     @Test

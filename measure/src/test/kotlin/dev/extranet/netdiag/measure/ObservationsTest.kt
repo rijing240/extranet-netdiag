@@ -4,6 +4,7 @@ import dev.extranet.netdiag.core.decision.Subjects
 import dev.extranet.netdiag.core.verdict.DiagnosisState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -30,15 +31,40 @@ class ObservationsTest {
 
     private fun samples(rsrpDbm: Int?, count: Int): List<RadioSample> = List(count) { sample(rsrpDbm) }
 
-    private fun hop(address: String, reachable: Boolean, latencyMillis: Long?): TwoHopProbe.HopResult =
-        TwoHopProbe.HopResult(address, reachable, latencyMillis)
+    private fun hop(
+        address: String,
+        reachable: Boolean,
+        latencyMillis: Long?,
+        answeredEcho: Boolean = false,
+    ): TwoHopProbe.HopResult = TwoHopProbe.HopResult(address, reachable, latencyMillis, answeredEcho)
 
     @Test
     fun aWeakMedianIsWeakAndTheEvidenceCarriesTheNumber() {
         val finding = Observations.signal(samples(-118, 60))
         assertEquals(DiagnosisState.WEAK, finding.assessment)
         assertEquals(0.9, finding.confidence)
-        assertTrue(finding.evidence.first().contains("median RSRP -118 dBm over 60 samples"))
+        assertTrue(finding.evidence.first().contains("median -118 dBm over 60 samples on LTE"))
+    }
+
+    @Test
+    fun aWifiSessionIsGradedOnTheWifiScaleNotTheLteScale() {
+        // -55 dBm is a superb Wi-Fi link but an impossible LTE RSRP; -85 is a Wi-Fi network
+        // at the edge of usable and an ordinary LTE cell. One scale cannot grade both.
+        val good = Observations.signal(samples(-55, 10).map { it.copy(networkType = "WIFI") })
+        assertEquals(DiagnosisState.GOOD, good.assessment, "-55 dBm Wi-Fi must be Good")
+        assertTrue(good.evidence.first().endsWith("on WIFI"))
+        val weak = Observations.signal(samples(-85, 10).map { it.copy(networkType = "WIFI") })
+        assertEquals(DiagnosisState.WEAK, weak.assessment, "-85 dBm Wi-Fi must be Weak")
+    }
+
+    @Test
+    fun aSessionWithoutATypeStillGradesButKeepsTheNeutralEvidence() {
+        // -105 dBm separates the scales: FAIR on the cellular thresholds, WEAK on the Wi-Fi
+        // ones. The cellular reading is the conservative default when nothing says otherwise.
+        val untyped = samples(-105, 10).map { it.copy(networkType = null) }
+        val finding = Observations.signal(untyped)
+        assertEquals(DiagnosisState.FAIR, finding.assessment)
+        assertTrue(finding.evidence.first().endsWith("on null"))
     }
 
     @Test
@@ -88,9 +114,30 @@ class ObservationsTest {
         assertEquals(listOf(Subjects.FIRST_HOP, Subjects.INTERNET_HOP), findings.map { it.subject })
         assertEquals(listOf(DiagnosisState.GOOD, DiagnosisState.GOOD), findings.map { it.assessment })
         assertTrue(
-            findings.first().evidence.first().contains("gateway 10.0.0.1 on port 80 answered in 8 ms"),
-            "the first hop's evidence must name the port it was asked on",
+            findings.first().evidence.first().contains("gateway 10.0.0.1 answered in 8 ms"),
+            "the first hop's evidence must name the gateway and the round trip it took",
         )
+    }
+
+    @Test
+    fun aGatewayThatOnlyAnswersAnEchoIsGoodAndQuotesNoTimeItNeverMeasured() {
+        // The cellular case: nothing is listening on port 80, the router answers the echo
+        // request instead. The hop is alive and is reported Good - not Unknown - but no round
+        // trip was timed, so no figure is printed. "Answered in 0 ms" would be a number the
+        // congestion rule then compares against a real one.
+        val findings = Observations.hops(
+            TwoHopProbe.Verdict(
+                gateway = hop("10.241.101.1", reachable = true, latencyMillis = null, answeredEcho = true),
+                internet = hop("1.1.1.1", reachable = true, latencyMillis = 42L),
+                gatewayMedianMillis = null,
+                internetMedianMillis = 42L,
+            ),
+            onCellular = true,
+        )
+        val gateway = findings.first()
+        assertEquals(DiagnosisState.GOOD, gateway.assessment, "a gateway that answered is a healthy hop")
+        assertNull(gateway.latencyMillis, "an echo answer times nothing, so no latency is claimed")
+        assertEquals("gateway 10.241.101.1 answered an echo request", gateway.evidence.first())
     }
 
     @Test

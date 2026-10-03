@@ -15,10 +15,12 @@ public data class PathNode(
  * The one path diagram: Phone, then the network in front of it, then the internet.
  *
  * The diagram exists so Checkup, Hotspot and Wi-Fi diagnosis cannot disagree about where the
- * problem is: they all read the same findings and produce the same three states. The nodes name
- * the *role* (the first hop, whatever box provides it) rather than the hardware, because Android
- * cannot tell a router from a phone hotspot from a carrier NAT - and a diagram that guessed
- * would be wrong on exactly the networks this app exists to diagnose.
+ * problem is: they all read the same findings and produce the same three states. The middle
+ * node is named by the *measured* link, not one guessed at: a phone on Wi-Fi is behind a
+ * router, a phone on mobile data is behind a carrier cell. The link's own evidence carries
+ * its type ("... samples on WIFI"), so the diagram reads the same facts the rules do rather
+ * than a parallel flag - and evidence that names no type gets the neutral wording, because a
+ * diagram that guessed would be wrong on exactly the networks this app exists to diagnose.
  */
 public object PathModel {
 
@@ -34,9 +36,26 @@ public object PathModel {
         val internet = findings.firstOrNull { it.subject == Subjects.INTERNET_HOP }
         return listOf(
             PathNode("This phone", phone.state(), phone?.evidence?.firstOrNull()),
-            PathNode("Network / router", localLink.state(), localLink?.evidence?.firstOrNull()),
+            PathNode(middleNodeName(phone), localLink.state(), localLink?.evidence?.firstOrNull()),
             PathNode("Internet", internet.state(), internet?.evidence?.firstOrNull()),
         )
+    }
+
+    /**
+     * What the middle node is called, decided by the phone finding's own evidence.
+     *
+     * The sample's `networkType` is written into that evidence by the inference layer, so the
+     * diagram reads the same facts the rules do rather than a parallel flag: on Wi-Fi the first
+     * hop is the router, on any cellular technology it is the carrier, and evidence naming no
+     * type keeps the role name rather than a guess about the box.
+     */
+    internal fun middleNodeName(phone: Finding?): String {
+        val marker = phone?.evidence?.firstOrNull() ?: return "Network"
+        return when {
+            marker.contains(" on WIFI") -> "Wi-Fi router"
+            marker.contains(" on ") -> "Carrier network"
+            else -> "Network"
+        }
     }
 
     private fun Finding?.state(): DiagnosisState = this?.assessment ?: DiagnosisState.UNKNOWN

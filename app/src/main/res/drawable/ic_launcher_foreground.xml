@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The mark: a dial with a signal radiating inside it.
+
+  Two ideas, and the app is exactly the two together. The ring is the instrument - this is a
+  measuring app, and everything it tells the user comes from a reading, not a guess. The waves
+  are the network itself: a dot with arcs opening away from it, the one shape that needs no
+  explanation to read as "wireless". The strongest wave is drawn in the app's green, the same
+  green it paints a strong reading with, so the mark says "network, measured, and the strong
+  direction is that way" before anyone opens it.
+
+  The waves open to the north-east because that is the app's own phrase for an answer: a scan
+  ends by naming "the north-east side", and the dial's green wave points at it.
+
+  The geometry is derived rather than drawn by eye: centre (54,54); dial radius 28 with a 5 dp
+  stroke; waves of radius 9 (ink) and 17 (green), 5 dp, round-capped, each a quarter turn from
+  north to east; a 3.4 dp radius dot at the source. Nothing reaches further than 30.5 dp from
+  the centre, inside the 33 dp that a round mask guarantees, so no launcher's mask can crop the
+  mark. The waves are 3 dp apart at their closest, which is room enough to stay separate at the
+  smallest size an icon is ever drawn.
+
+  It is all arcs and one filled circle, so it is exact at any size and needs no bitmap: this app
+  supports API 26 and up, which is the version adaptive icons arrived in, so this vector is the
+  only icon that exists.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- The dial: the instrument. -->
+    <path
+        android:pathData="M 26,54 A 28 28 0 1 1 82,54 A 28 28 0 1 1 26,54"
+        android:strokeColor="#111118"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <!-- The nearest wave. -->
+    <path
+        android:pathData="M 54,45 A 9 9 0 0 1 63,54"
+        android:strokeColor="#111118"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <!-- The strongest wave, in the colour the app uses for the best direction. -->
+    <path
+        android:pathData="M 54,37 A 17 17 0 0 1 71,54"
+        android:strokeColor="#1E9E55"
+        android:strokeWidth="5"
+        android:strokeLineCap="round" />
+
+    <!-- The source the waves come from. -->
+    <path
+        android:fillColor="#111118"
+        android:pathData="M 50.6,54 A 3.4 3.4 0 1 1 57.4,54 A 3.4 3.4 0 1 1 50.6,54 Z" />
+</vector>

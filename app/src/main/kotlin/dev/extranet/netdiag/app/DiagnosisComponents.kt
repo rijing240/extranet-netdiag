@@ -1,7 +1,9 @@
 package dev.extranet.netdiag.app
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -74,7 +76,7 @@ public fun VerdictCard(verdict: Verdict, modifier: Modifier = Modifier) {
         Spacer(Modifier.height(8.dp))
         Text(
             verdict.what,
-            style = MaterialTheme.typography.headlineSmall,
+            style = CappedDisplay(MaterialTheme.typography.headlineSmall),
             color = Editorial.Ink,
         )
         // The cause slot is always drawn, including when there is no cause: an Unknown answer
@@ -153,43 +155,75 @@ private fun ConfidenceLine(confidence: Double) {
 /**
  * The path diagram: this phone, the network in front of it, the internet.
  *
- * One row rather than a drawing, because three boxes on a phone screen is already a diagram and
- * any more furniture would compete with the verdict above it. The states come from
- * `PathModel`, so Checkup, Hotspot and Wi-Fi diagnosis cannot put the fault in different hops.
+ * One row of nodes rather than a drawing, because three boxes on a phone screen is already a
+ * diagram and any more furniture would compete with the verdict above it - but only while the row
+ * fits. Three nodes sharing the width of a 360dp screen leaves each of them a hundred-odd dp for
+ * a name, a state word and a sentence, which is a layout that survives exactly one font size. So
+ * the row is kept when there is room for it and the nodes stack, with the arrow becoming a
+ * downwards one, when there is not. The states come from `PathModel`, so Checkup, Hotspot and
+ * Wi-Fi diagnosis cannot put the fault in different hops.
  */
 @Composable
 public fun PathDiagram(nodes: List<PathNode>, modifier: Modifier = Modifier) {
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale
     SectionCard(modifier, eyebrow = "The path") {
-        Row(verticalAlignment = Alignment.Top) {
-            nodes.forEachIndexed { index, node ->
-                if (index > 0) {
-                    Text(
-                        "→",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = Editorial.Muted,
-                        modifier = Modifier.padding(horizontal = 4.dp),
-                    )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val across = responsiveColumns(maxWidth, nodes.size, minColumn = 104.dp, fontScale = fontScale)
+            if (across >= nodes.size) {
+                Row(verticalAlignment = Alignment.Top) {
+                    nodes.forEachIndexed { index, node ->
+                        if (index > 0) {
+                            Text(
+                                "→",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = Editorial.Muted,
+                                modifier = Modifier.padding(horizontal = 4.dp),
+                            )
+                        }
+                        PathNodeCell(node, Modifier.weight(1f))
+                    }
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        node.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Editorial.InkMid,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    StateBadge(node.state)
-                    node.detail?.let { detail ->
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            detail,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Editorial.Muted,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    nodes.forEachIndexed { index, node ->
+                        Row(verticalAlignment = Alignment.Top) {
+                            PathNodeCell(node, Modifier.weight(1f))
+                            if (index < nodes.lastIndex) {
+                                Text(
+                                    "↓",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = Editorial.Muted,
+                                    modifier = Modifier.padding(start = 8.dp),
+                                )
+                            }
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+/** One hop: what it is, how it is doing, and what it said. */
+@Composable
+private fun PathNodeCell(node: PathNode, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        Text(
+            node.name,
+            style = MaterialTheme.typography.labelMedium,
+            color = Editorial.InkMid,
+        )
+        Spacer(Modifier.height(4.dp))
+        StateBadge(node.state)
+        node.detail?.let { detail ->
+            Spacer(Modifier.height(4.dp))
+            Text(
+                detail,
+                style = MaterialTheme.typography.bodySmall,
+                color = Editorial.Muted,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

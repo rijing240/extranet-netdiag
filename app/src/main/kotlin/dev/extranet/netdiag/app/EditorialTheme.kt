@@ -8,6 +8,8 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -193,5 +195,41 @@ public fun EditorialTheme(content: @Composable () -> Unit) {
             extraLarge = RoundedCornerShape(24.dp),
         ),
         content = content,
+    )
+}
+
+/**
+ * How far the very large type is allowed to grow with the reader's font setting.
+ *
+ * People do set their phones to big text, often because they need it, and an app that breaks at
+ * 1.8x is an app those people cannot use. So body copy, labels and buttons follow the setting all
+ * the way. The display sizes do not, and this is the trade-off made explicit rather than left to
+ * chance: at 28sp a title is already the largest thing on a 360dp screen, and letting it grow to
+ * 50sp turns a two-word question into a three-line banner that pushes the answer off the screen
+ * and the button below the fold. Capped at 1.3x the title still grows visibly, the sentence still
+ * wraps instead of clipping, and everything underneath stays where the thumb expects it.
+ */
+public const val DISPLAY_FONT_SCALE_CAP: Float = 1.3f
+
+/**
+ * A display style that grows with the reader's font setting, but only to [DISPLAY_FONT_SCALE_CAP].
+ *
+ * Applied by hand to the handful of places that set a title or a headline-sized number, rather
+ * than by rewriting the type scale, because the same 28sp has to keep its full size for a caller
+ * that already knows it is drawing a short fixed string into a wide box.
+ */
+@Composable
+public fun CappedDisplay(style: TextStyle, maxScale: Float = DISPLAY_FONT_SCALE_CAP): TextStyle {
+    val fontScale = LocalDensity.current.fontScale
+    if (fontScale <= maxScale) return style
+    val factor = maxScale / fontScale
+    return style.copy(
+        fontSize = style.fontSize * factor,
+        lineHeight = if (style.lineHeight.isSpecified) style.lineHeight * factor else style.lineHeight,
+        letterSpacing = if (style.letterSpacing.isSpecified) {
+            style.letterSpacing * factor
+        } else {
+            style.letterSpacing
+        },
     )
 }

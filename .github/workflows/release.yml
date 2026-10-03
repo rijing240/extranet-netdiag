@@ -1,0 +1,159 @@
+name: Release
+
+# Publishing is a deliberate act: push a tag whose name matches the version in the build file.
+# The workflow refuses to publish anything else, because an Android update has to carry the same
+# package name, the same signing key and a higher version code than the build it replaces, and
+# those three rules are cheaper to enforce here than to explain later.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build and publish, for example v0.3.1"
+        required: true
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Signed APK and GitHub release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags and history, for the version-code comparison against the previous release.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Same provisioning as CI: the hosted image ships the SDK but not on PATH, and the
+      # directory version varies, so sdkmanager is located rather than assumed.
+      - name: Provision the Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          echo "SDK=$SDK"
+          SDKMGR="$(find "$SDK/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort | tail -1)"
+          if [ -n "$SDKMGR" ]; then
+            yes | "$SDKMGR" --licenses > /dev/null 2>&1 || true
+            "$SDKMGR" "platform-tools" "platforms;android-35" "build-tools;35.0.0" || true
+          fi
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      # The three rules, checked before anything is built. A release that violates one of them is
+      # not a release: it is a build nobody will be able to install over what they already have.
+      - name: Check the tag, the version name and the version code
+        id: version
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          BUILD_FILE="app/build.gradle.kts"
+          VERSION="$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' "$BUILD_FILE" | head -1)"
+          CODE="$(sed -n 's/.*versionCode *= *\([0-9]*\).*/\1/p' "$BUILD_FILE" | head -1)"
+          echo "tag=$TAG versionName=$VERSION versionCode=$CODE"
+
+          if [ "v$VERSION" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match versionName $VERSION in $BUILD_FILE"
+            exit 1
+          fi
+
+          PREVIOUS="$(git tag --list 'v*' --sort=-v:refname | grep -vxF "$TAG" | head -1 || true)"
+          if [ -n "$PREVIOUS" ]; then
+            PREVIOUS_CODE="$(git show "$PREVIOUS:$BUILD_FILE" | sed -n 's/.*versionCode *= *\([0-9]*\).*/\1/p' | head -1)"
+            echo "previous=$PREVIOUS versionCode=$PREVIOUS_CODE"
+            if [ "$CODE" -le "$PREVIOUS_CODE" ]; then
+              echo "::error::versionCode $CODE is not greater than $PREVIOUS's ($PREVIOUS_CODE); Android would refuse the update"
+              exit 1
+            fi
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # A version with a suffix is a test build, and GitHub is told so: the in-app check
+          # labels prereleases as test builds rather than hiding them.
+          case "$VERSION" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Write the signing key from secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${STORE_PASSWORD:-}" ] || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+            echo "::error::The release key is not configured. Add RELEASE_KEYSTORE_BASE64, RELEASE_STORE_PASSWORD, RELEASE_KEY_ALIAS and RELEASE_KEY_PASSWORD to this repository's secrets - see docs/release-and-updates.md."
+            exit 1
+          fi
+          mkdir -p keystore
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > keystore/release.jks
+          {
+            printf 'storeFile=keystore/release.jks\n'
+            printf 'storePassword=%s\n' "$STORE_PASSWORD"
+            printf 'keyAlias=%s\n' "$KEY_ALIAS"
+            printf 'keyPassword=%s\n' "$KEY_PASSWORD"
+          } > keystore.properties
+
+      - name: Build the signed release APK
+        run: gradle :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Name it, hash it, and prove it is signed
+        id: package
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          APK="$(ls app/build/outputs/apk/release/*.apk | head -1)"
+          cp "$APK" "extranet-$VERSION.apk"
+          sha256sum "extranet-$VERSION.apk" > "extranet-$VERSION.apk.sha256"
+          cat "extranet-$VERSION.apk.sha256"
+
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK/build-tools" -type f -name apksigner | sort | tail -1)"
+          if [ -n "$APKSIGNER" ]; then
+            # A release that is not signed cannot be installed over anything, so this is a
+            # failure and not a warning.
+            "$APKSIGNER" verify --print-certs "extranet-$VERSION.apk" | head -6
+          fi
+          echo "apk=extranet-$VERSION.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          APK: ${{ steps.package.outputs.apk }}
+        run: |
+          set -euo pipefail
+          ARGS=(--title "$VERSION" --generate-notes)
+          if [ "$PRERELEASE" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          gh release create "$TAG" "$APK" "$APK.sha256" "${ARGS[@]}"
+
+      - name: Leave a summary
+        run: |
+          {
+            echo "### extranet ${{ steps.version.outputs.version }}"
+            echo
+            echo "- Tag: \`${{ github.event.inputs.tag || github.ref_name }}\`"
+            echo "- APK: \`${{ steps.package.outputs.apk }}\`"
+            echo "- Test build: \`${{ steps.version.outputs.prerelease }}\`"
+            echo
+            echo "Installed copies will see this from the top bar's info action, which checks"
+            echo "only when tapped."
+          } >> "$GITHUB_STEP_SUMMARY"

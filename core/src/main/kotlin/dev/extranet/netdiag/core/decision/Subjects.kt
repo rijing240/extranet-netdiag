@@ -21,4 +21,14 @@ public object Subjects {
 
     /** Whether payload actually moves, independent of latency and signal. */
     public const val THROUGHPUT: String = "throughput"
+
+    /**
+     * The mobile data in the SIM: whether it is switched on, and who switched it off.
+     *
+     * Its own subject rather than a branch of [SIGNAL] because the radio link and the data
+     * allowance fail independently and call for opposite advice: a perfect signal with no data
+     * is not a weak-signal problem, and telling someone to walk toward a window when their
+     * allowance is spent wastes their time and hides the real fault.
+     */
+    public const val MOBILE_DATA: String = "mobileData"
 }
