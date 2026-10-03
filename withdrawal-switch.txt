@@ -1,6 +1,7 @@
 # NetDiag withdrawal switch
 #
-# The app reads this file once when it opens, and reads nothing else that happens on its own.
+# The app reads this file once when it opens, in the same pass that asks whether a newer build
+# has been published. Those two questions are the only thing it ever does on its own.
 # The first line decides: `off` retires the build, anything else runs it.
 #
 # on   - the app works. This is the normal state.

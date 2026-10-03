@@ -95,8 +95,18 @@ Three things about it are easy to trip over.
 
 ## The in-app update notice
 
-The top bar's info action shows the installed version and a **Check for updates** button. Tapping
-it makes **one** request to GitHub's release list and reports what it finds:
+A published build now **says so when the app opens**. If the newest release is newer than the one
+installed, a banner sits above the screen naming the version, the file and its size, with **Get
+it** to open the release page and **Not now** to make it go away. The dismissal belongs to *that
+release* rather than to the question, so it is not shown again for that build, and the next
+published one asks afresh — which is the whole difference between a notice and a nag, and is
+[UpdatePrompt](../measure/src/main/kotlin/dev/extranet/netdiag/measure/UpdatePrompt.kt) in five
+lines. It is a banner rather than a dialog on purpose: a dialog on every launch is something
+people learn to dismiss without reading.
+
+The top bar's info action remains for the explicit version, and still offers the same report on
+demand. Tapping **Check for updates** makes **one** request to GitHub's release list and reports
+what it finds:
 
 - **newer build available** — names the version (and says so when it is a test build), shows the
   APK's name and size, and offers to open the release page;
@@ -141,13 +151,17 @@ keeps working until its owner closes it and starts it again. Retiring a build is
 matter of minutes, not seconds — which is right for a version being handed over to a production
 build, and would not be enough for a security emergency.
 
-So this does add the app's one request that nobody asked for, which the rest of this document used
-to say did not exist. It is bounded on purpose: once per launch, never on resume, never retried,
-four seconds of timeout, 8 KB ceiling, and the app is drawn and usable while the answer is on its
-way — the notice only ever *replaces* the screens, it never covers them. What it sends is the URL
-and nothing else: no identifier, no version, no cookie, no account. A withdrawn copy is told which
-build it is refusing to run, that nothing on the phone was changed, that no measurement was
-uploaded, and where to get the current build.
+So this does add the app's one pass at launch that nobody asked for, which the rest of this
+document used to say did not exist. It asks two questions in that one pass — *is this build still
+wanted*, and *is there a newer one published* — because there is no sense in a phone making two
+journeys at the moment it has already agreed to make one. It is bounded on purpose: once per
+launch, never on resume, never retried, four seconds of timeout, 8 KB ceiling, and the app is drawn
+and usable while the answer is on its way — the notice only ever *replaces* the screens, it never
+covers them. What it sends is the URL and nothing else: no identifier, no version, no cookie, no
+account. A withdrawn copy is told which build it is refusing to run, that nothing on the phone was
+changed, that no measurement was uploaded, and — because a withdrawal that leaves somebody with no
+way forward is a dead end rather than a retirement — which version is published and where to get
+it.
 
 The other lever, which costs no privacy at all, is to publish a version that declines to run. It
 takes effect only for people who update, which is usually the point.

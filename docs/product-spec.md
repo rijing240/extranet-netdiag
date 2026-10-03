@@ -78,9 +78,10 @@ ANDROID      TelephonyManager, ConnectivityManager, sockets
    DNS/TCP/TLS/first-byte, throughput, and Wi-Fi/hotspot link info. Each emits timestamped
    samples with a status (ok, failed, unavailable). Missing data is explicit, never zero. A
    foreground service runs during tests and scans; nothing runs in the background by default.
-   The one request the app makes that nobody asked for is the withdrawal switch, read once at
-   launch so a retired build can stop working; it sends nothing but its own address and it fails
-   open, so it cannot affect a phone that is offline. See `docs/release-and-updates.md`.
+   The one pass the app makes that nobody asked for is at launch, and it asks two questions of
+   GitHub: is this build still wanted, and is a newer one published. It sends nothing but its own
+   address, it fails open so it cannot affect a phone that is offline, and a newer build produces a
+   banner the user can dismiss once, per release. See `docs/release-and-updates.md`.
 2. **Inference.** Turns samples into findings like `signal: weak`, `hop2: slow`,
    `cause: upstream`, each with a confidence. The path model gives one state per hop. The signal
    trend uses a smoothed moving window to say warmer / colder; it never claims a direction.

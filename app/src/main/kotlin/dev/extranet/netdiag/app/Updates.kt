@@ -3,10 +3,14 @@ package dev.extranet.netdiag.app
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -20,6 +24,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.extranet.netdiag.measure.GitHubReleasesSource
+import dev.extranet.netdiag.measure.ReleasedVersion
 import dev.extranet.netdiag.measure.UpdateOutcome
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,8 +38,9 @@ import kotlinx.coroutines.withContext
  * Where this project publishes its builds. One constant, because it is the whole address of the
  * update question and it should be readable in one place.
  */
-private const val RELEASES_OWNER: String = "rijing240"
-private const val RELEASES_REPOSITORY: String = "extranet-netdiag"
+/** Where this project publishes its builds. Read by the manual check and the launch check alike. */
+internal const val RELEASES_OWNER: String = "rijing240"
+internal const val RELEASES_REPOSITORY: String = "extranet-netdiag"
 
 /** What the update notice is showing. */
 public sealed interface UpdateUiState {
@@ -209,9 +215,10 @@ public fun UpdatesDialog(
                         }
                     }
                     is UpdateUiState.Idle -> Notice(
-                        "Updates are never checked in the background. Asking GitHub is one " +
-                            "request, made when you tap, and it sends nothing about you or this " +
-                            "phone.",
+                        "When the app opens it looks once - two questions to GitHub: is this " +
+                            "build still wanted, and is a newer one published. Nothing is sent " +
+                            "about you or this phone, and nothing is asked again until you open " +
+                            "the app again.",
                     )
                 }
             }
@@ -232,6 +239,70 @@ public fun UpdatesDialog(
             LineButton(text = "Close", onClick = onDismiss)
         },
     )
+}
+
+/**
+ * The launch notice: a newer build is published, here it is, and here is what to do about it.
+ *
+ * A banner rather than a dialog, on purpose. A dialog on every launch is something people learn to
+ * dismiss without reading, which makes it worse than useless; a banner sits above the screen,
+ * costs nothing to ignore, and is still there next time. "Not now" forgets **this release** and
+ * not the question, so the next published build asks again — see [UpdatePrompt].
+ *
+ * Nothing is claimed here either. The app says the build exists, and the button opens GitHub in
+ * the browser; Android still asks the person to confirm the install, which is the platform's
+ * decision and not one this app can talk its way around.
+ */
+@Composable
+public fun UpdateBanner(
+    release: ReleasedVersion,
+    onOpen: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val url = release.pageUrl ?: release.apk?.downloadUrl
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Editorial.Paper)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Text(
+            if (release.testBuild) "Update available · test build" else "Update available",
+            style = MaterialTheme.typography.labelMedium,
+            color = Editorial.Blue,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            "Version ${release.tag} is published. Android will ask you to confirm the install.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Editorial.Ink,
+        )
+        val asset = release.apk
+        if (asset != null) {
+            Spacer(Modifier.height(4.dp))
+            MonoMeta(
+                buildString {
+                    append(asset.name)
+                    val size = asset.bytes
+                    if (size != null && size > 0) {
+                        append("  ·  ")
+                        append("%.1f MB".format(size / 1_048_576.0))
+                    }
+                },
+                color = Editorial.InkMid,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Row {
+            if (url != null) {
+                InkButton(text = "Get it", onClick = { onOpen(url) })
+                Spacer(Modifier.width(10.dp))
+            }
+            LineButton(text = "Not now", onClick = onDismiss)
+        }
+    }
+    Hairline(color = Editorial.Hairline)
 }
 
 @Composable

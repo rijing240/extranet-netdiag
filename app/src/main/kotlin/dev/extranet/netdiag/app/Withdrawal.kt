@@ -14,93 +14,35 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import dev.extranet.netdiag.measure.Withdrawal
-import dev.extranet.netdiag.measure.WithdrawalSource
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-/**
- * Whether the project has retired this build, read once when the app opens.
- *
- * The one thing the app does without being asked, and the reason it is allowed to: somebody who
- * publishes the app has no other way to stop a copy already in the field. Android will not let one
- * app close another, and the only other lever is shipping a replacement — which needs the owner's
- * action, and does not help if the thing being replaced is giving bad answers.
- *
- * So the shape of it matters more than the existence of it:
- *
- * - **The app is usable while the answer is on its way.** A network round trip is not allowed to
- *   delay an instrument. The question is asked in the background and only ever *replaces* the
- *   screens when the answer is `off`; it never covers them.
- * - **It is asked once per launch and never retried.** The switch is a decision, not a poll.
- *   Re-reading it on every resume would let one phone sit there asking the question all day.
- * - **Only `off` withdraws a build.** Anything else — no network, a timeout, a 404, a portal's
- *   HTML, a typo — runs the app. See [Withdrawal] for why that direction is the only safe one.
- */
-public sealed interface WithdrawalUiState {
-
-    /** Running, or running for now. The two are deliberately the same thing to the app. */
-    public object Running : WithdrawalUiState
-
-    /** This build was withdrawn. Nothing else renders while this is the state. */
-    public data class Withdrawn(
-        public val message: String?,
-        public val url: String?,
-    ) : WithdrawalUiState
-}
-
-/** The switch, asked once at launch and answered into [state]. */
-public class WithdrawalViewModel : ViewModel() {
-
-    private val _state = MutableStateFlow<WithdrawalUiState>(WithdrawalUiState.Running)
-    public val state: StateFlow<WithdrawalUiState> = _state.asStateFlow()
-
-    private var asked = false
-
-    /**
-     * Asks once, off the main thread, and publishes whatever the answer is.
-     *
-     * Repeated calls after the first are ignored rather than queued: this is not a button, it is
-     * a launch check, and a recomposition must not turn it into a poll.
-     */
-    public fun checkOnce() {
-        if (asked) return
-        asked = true
-        viewModelScope.launch {
-            val answer = withContext(Dispatchers.IO) { WithdrawalSource(WithdrawalSource.DEFAULT_URL).read() }
-            _state.value = when (answer) {
-                is Withdrawal.Withdrawn -> WithdrawalUiState.Withdrawn(answer.message, answer.url)
-                // Running, and could-not-tell, are the same answer to this app.
-                is Withdrawal.Running -> WithdrawalUiState.Running
-            }
-        }
-    }
-}
+import dev.extranet.netdiag.measure.ReleasedVersion
 
 /**
  * What a person is told when the build they are holding has been retired.
  *
- * Three things are said on purpose. The app says *which* build is retired, so somebody with two
+ * Four things are said on purpose. The app says *which* build is retired, so somebody with two
  * copies installed can tell them apart. It says *nothing was changed and nothing was uploaded*,
- * because a stopped app is the moment somebody wonders what it did with their data. And it says
- * what to do next, with the link the project put in the switch file — opened only when the
- * person taps it, and only ever because the address passed an `https` check on the way here.
+ * because a stopped app is the moment somebody wonders what it did with their data. It says what
+ * to do next — and it must, because a withdrawal that leaves somebody with no way forward is a
+ * dead end rather than a retirement, so the newest published build is named here, with the button
+ * pointing at it. And it says plainly that the app stopped of its own accord, because the one
+ * thing this screen must never do is look like the phone broke.
+ *
+ * The link comes from the release list when there is a newer release, and from the switch file
+ * otherwise — the project may have pointed the switch at a page of its own. Either way it was
+ * checked for `https` before it got here, and it opens only when the person taps it.
  */
 @Composable
 public fun WithdrawnScreen(
     message: String?,
     url: String?,
+    newest: ReleasedVersion?,
     onOpen: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val installed = installedVersionName(context)
+    val latestUrl = newest?.pageUrl ?: newest?.apk?.downloadUrl
+    val destination = latestUrl ?: url
 
     Column(
         modifier = modifier
@@ -139,8 +81,34 @@ public fun WithdrawnScreen(
         MonoMeta("installed build: $installed", color = Editorial.InkMid)
 
         Spacer(Modifier.height(24.dp))
-        if (url != null) {
-            InkButton(text = "Get the current build", onClick = { onOpen(url) })
+        if (newest != null) {
+            Text(
+                if (newest.testBuild) {
+                    "Version ${newest.tag} is published as a test build."
+                } else {
+                    "Version ${newest.tag} is published."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = Editorial.Ink,
+            )
+            newest.apk?.let { asset ->
+                Spacer(Modifier.height(4.dp))
+                MonoMeta(
+                    buildString {
+                        append(asset.name)
+                        val size = asset.bytes
+                        if (size != null && size > 0) {
+                            append("  ·  ")
+                            append("%.1f MB".format(size / 1_048_576.0))
+                        }
+                    },
+                    color = Editorial.InkMid,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
+        if (destination != null) {
+            InkButton(text = "Get the current build", onClick = { onOpen(destination) })
         } else {
             // No link means the switch file gave none we trust, which is the app's own doing, not
             // the user's. Saying so beats a button that silently does nothing.

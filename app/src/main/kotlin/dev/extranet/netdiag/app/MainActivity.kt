@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.extranet.netdiag.measure.UpdatePrompt
 
 /**
  * S6 Presentation: the app shell.
@@ -103,24 +104,32 @@ private enum class Screen(val label: String, val icon: ImageVector) {
 private fun NetDiagApp() {
     var current by remember { mutableStateOf(Screen.CAPABILITY) }
     var updatesOpen by remember { mutableStateOf(false) }
+    val context = LocalContext.current
 
-    // One question at launch: has the project retired this build? The app is drawn first and the
-    // answer is allowed to replace it - a withdrawn build stops working, and nothing else does.
-    // The check never delays the shell, because an instrument that waits on a network before it
-    // can be used is an instrument nobody trusts on a train.
-    val withdrawalViewModel: WithdrawalViewModel = viewModel()
-    val withdrawalState by withdrawalViewModel.state.collectAsState()
-    androidx.compose.runtime.LaunchedEffect(Unit) { withdrawalViewModel.checkOnce() }
-    val withdrawn = withdrawalState as? WithdrawalUiState.Withdrawn
+    // One pass at launch, two questions: has the project retired this build, and is there a newer
+    // one published? The shell is drawn first and the answers are allowed to change it, so a
+    // network round trip never stands between somebody and a measurement. A withdrawn build stops
+    // working; a merely out-of-date one gets a banner saying so.
+    val launchCheck: LaunchCheckViewModel = viewModel()
+    val launchReport by launchCheck.report.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { launchCheck.checkOnce(context) }
+
+    val withdrawn = launchReport.retired
     if (withdrawn != null) {
-        val withdrawalContext = LocalContext.current
         WithdrawnScreen(
             message = withdrawn.message,
             url = withdrawn.url,
-            onOpen = { openInBrowser(withdrawalContext, it) },
+            newest = launchReport.newest,
+            onOpen = { openInBrowser(context, it) },
         )
         return
     }
+
+    // A banner, not a dialog, and it remembers only which release was turned down - so "not now"
+    // is respected for that build and the next published build asks again.
+    var dismissedRelease by remember { mutableStateOf(UpdatePromptMemory.dismissedRelease(context)) }
+    val newest = launchReport.newest
+    val banner = newest?.takeIf { UpdatePrompt.shouldShow(newest.tag, dismissedRelease) }
 
     // The update notice is a dialog over whatever screen is showing, and it is only ever opened
     // by a tap on the info action. Opening it does not check anything: the request waits for the
@@ -137,18 +146,31 @@ private fun NetDiagApp() {
         topBar = { NetDiagTopBar(current, onOpenUpdates = { updatesOpen = true }) },
         bottomBar = { NetDiagBottomBar(current, onSelect = { current = it }) },
     ) { innerPadding ->
-        Box(Modifier.fillMaxSize().padding(innerPadding)) {
-            when (current) {
-                Screen.CAPABILITY -> CheckupRoute(Modifier.fillMaxSize())
-                Screen.WATERFALL -> SpeedRoute(Modifier.fillMaxSize())
-                Screen.TIMELINE -> SignalRoute(
-                    modifier = Modifier.fillMaxSize(),
-                    onOpenRoomMap = { current = Screen.MAP },
+        Column(Modifier.fillMaxSize().padding(innerPadding)) {
+            if (banner != null) {
+                UpdateBanner(
+                    release = banner,
+                    onOpen = { openInBrowser(context, it) },
+                    onDismiss = {
+                        val tag = banner.tag
+                        UpdatePromptMemory.dismiss(context, tag)
+                        dismissedRelease = tag
+                    },
                 )
-                Screen.MAP -> RoomMapRoute(
-                    modifier = Modifier.fillMaxSize(),
-                    onOpenSignal = { current = Screen.TIMELINE },
-                )
+            }
+            Box(Modifier.fillMaxSize().weight(1f)) {
+                when (current) {
+                    Screen.CAPABILITY -> CheckupRoute(Modifier.fillMaxSize())
+                    Screen.WATERFALL -> SpeedRoute(Modifier.fillMaxSize())
+                    Screen.TIMELINE -> SignalRoute(
+                        modifier = Modifier.fillMaxSize(),
+                        onOpenRoomMap = { current = Screen.MAP },
+                    )
+                    Screen.MAP -> RoomMapRoute(
+                        modifier = Modifier.fillMaxSize(),
+                        onOpenSignal = { current = Screen.TIMELINE },
+                    )
+                }
             }
         }
     }
