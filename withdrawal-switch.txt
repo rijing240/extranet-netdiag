@@ -13,5 +13,11 @@
 # The reason it fails open - and it does, always - is that this file cannot be allowed to strand
 # somebody. No network, a timeout, a 404, a login portal answering instead, a typo: the app runs.
 # So it can retire a version, and it cannot enforce anything against a device that is offline.
+#
+# Two things to know before you flip it, because neither is instant and both are by design:
+#   - GitHub's raw host serves this file from a cache for a few minutes after a commit, so a copy
+#     of the app opened straight away can still read the old line.
+#   - The app asks once when it opens and never again, so an app already open on somebody's phone
+#     keeps working until they close it and start it once more.
 
 on
