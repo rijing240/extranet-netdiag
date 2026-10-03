@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app's icon, as the platform wants it: two layers and a mask the launcher supplies.
+
+  The minimum this app supports is API 26, which is the version adaptive icons arrived in, so
+  this is the icon - there is no older bitmap set to keep in step with it, and the mark is vector
+  throughout, so it is exact on any screen at any density rather than being scaled from a file.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>

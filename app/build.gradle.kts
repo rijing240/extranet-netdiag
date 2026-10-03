@@ -1,7 +1,31 @@
+import java.net.URI
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+/**
+ * The release signing key, read from a file that is never committed.
+ *
+ * An Android update has to be signed with the same key as the build already installed, which makes
+ * the release key the app's identity rather than a build detail: lose it and nobody who installed
+ * the app can ever update it again, leak it and somebody else can publish a build that installs
+ * over it. So it lives outside the repository (`keystore/release.jks`), its passwords live in
+ * `keystore.properties` beside it (git-ignored, with a documented template checked in), and CI
+ * writes both from repository secrets.
+ *
+ * When the file is absent - a fresh clone, a pull request, a debug build - the release build is
+ * unsigned rather than broken. That is the difference between "publishing needs a key" and
+ * "everything needs a key", and only the first is true.
+ */
+val releaseKeystoreFile = rootProject.file("keystore.properties")
+val releaseSigning: Properties? = if (releaseKeystoreFile.exists()) {
+    Properties().apply { releaseKeystoreFile.inputStream().use { load(it) } }
+} else {
+    null
 }
 
 android {
@@ -12,8 +36,8 @@ android {
         applicationId = "dev.extranet.netdiag"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-B0"
+        versionCode = 5
+        versionName = "0.3.2-B5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -29,11 +53,23 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        // Created only when a key is configured, so nothing here can fail for want of a secret.
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file(releaseSigning.getProperty("storeFile"))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigning != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -57,6 +93,24 @@ android {
     }
 }
 
+// Inter (SIL Open Font License) is the UI typeface: the closest open font to the one Apple uses,
+// which is licensed for Apple platforms only. The binary is fetched once on first build instead of
+// being committed, and every later build finds it already in place.
+val interFontFile = layout.projectDirectory.file("src/main/res/font/inter_variable.ttf").asFile
+val fetchInterFont by tasks.registering {
+    outputs.file(interFontFile)
+    onlyIf { !interFontFile.exists() }
+    doLast {
+        interFontFile.parentFile.mkdirs()
+        val source = "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
+        val connection = URI(source).toURL().openConnection()
+        connection.getInputStream().use { input ->
+            interFontFile.outputStream().use { output -> input.copyTo(output) }
+        }
+    }
+}
+tasks.named("preBuild") { dependsOn(fetchInterFont) }
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":probe"))
@@ -76,6 +130,9 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
+    // Bottom navigation needs real icons; material-icons-core does not carry NetworkCheck,
+    // BarChart or Timeline, so the extended set is pulled in at the compose release-train version.
+    implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     androidTestImplementation(libs.androidx.test.junit)

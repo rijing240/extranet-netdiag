@@ -29,3 +29,22 @@ Thumbs.db
 
 # Device testing artifacts (APK copy, pulled reports)
 device/
+
+# Release signing. The key is the app's identity - every future update has to be signed with it -
+# and its passwords are not for a repository. keystore.properties.example documents the shape;
+# the debug key is deliberately still tracked, and the negation keeps it that way.
+keystore.properties
+*.jks
+*.keystore
+!keystore/debug.keystore
+
+# The generated key's backup note, which spells the passwords out. Read it into your password
+# manager and delete it; it must never become a commit.
+keystore/*.txt
+
+# Written by the local provisioning script with a file:/// distributionUrl for this machine.
+# A wrapper properties file pointing at C:\ breaks for everyone else, so it stays untracked.
+gradle/wrapper/gradle-wrapper.properties
+
+# Scratch space used while working, not part of the project
+.tmp/

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The icon's background layer: the app's own paper, flat.
+
+  Flat on purpose. A launcher renders this behind a mask it chooses, at a size it chooses, on
+  whatever wallpaper the owner has, so anything drawn here that is not the mark is a chance for
+  the icon to look different from the app. Paper is exactly the colour every screen in the app
+  is built on, and the mark on top of it is the only thing with a voice.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#F2F2F7"
+        android:pathData="M0,0h108v108h-108z" />
+</vector>

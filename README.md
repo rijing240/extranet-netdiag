@@ -4,7 +4,28 @@ A network-aware Android telemetry engine: it measures what the radio is actually
 the user whose fault a slow connection is, and — once there is enough data — predicts service
 loss a few seconds before it happens.
 
-This repository is at **B1: measurement engine v1**.
+The shipped app is built from the `b3-native-chrome` branch. Releases, and the only place to
+download the APK, are on the [releases page](#install).
+
+## Install
+
+NetDiag is distributed as a signed APK on GitHub Releases rather than through the Play Store:
+
+<https://github.com/rijing240/extranet-netdiag/releases>
+
+Download `extranet-<version>.apk`, open it, and let your browser or file manager install it. It
+needs Android 8 (API 26) or newer, and asks for location and phone state because the measurements
+are about which tower and which link the handset is on.
+
+To update, install the newer APK over the older one. Android accepts that because every release
+carries the same signing key and a higher version code. NetDiag never checks by itself: open the
+app, tap the ⓘ in the top bar, press **Check for updates**, and it reports the newest published
+build and offers to open its download page. Nothing is requested from GitHub until you tap that
+button, and an ordinary commit never tells anyone to update. See
+[`docs/release-and-updates.md`](docs/release-and-updates.md).
+
+One exception to "installs over the old one": a debug build you installed yourself (from
+`gradle :app:assembleDebug`) was signed with a different key, so uninstall that first.
 
 ## What B0 delivers
 
@@ -60,7 +81,7 @@ It has already paid for itself: it caught two incorrectly transcribed Shannon-Ha
 (the −5 dB one was 9,600 bps off) before they could propagate into the capacity index.
 
 ```bash
-python3 tools/verify_ledger.py     # 72 constants, 2 geohash vectors
+python3 tools/verify_ledger.py     # 86 constants, 2 geohash vectors
 ```
 
 ## Building
@@ -114,6 +135,8 @@ at least five independent observations back it. See `docs/architecture.md`.
 ## Documents
 
 - `docs/architecture.md` — systems, layers, data flow, module boundaries.
+- `docs/product-spec.md` — the three tabs, the result shape, the diagnosis states and the rules a screen follows.
 - `docs/calculation-ledger.md` — every constant, its derivation, and the plan discrepancies.
 - `docs/probe-engine.md` — the four stages, the statistics, the exit criterion, and how to run it.
 - `docs/b0-device-run.md` — how to obtain the device report and what has and has not been run.
+- `docs/project-history.md` — what each batch delivered, the mistakes caught, the device evidence, and the current state.

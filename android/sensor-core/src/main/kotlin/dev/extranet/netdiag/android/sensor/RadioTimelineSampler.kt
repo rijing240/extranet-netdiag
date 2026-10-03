@@ -25,18 +25,34 @@ import kotlinx.coroutines.delay
  * adapter stays a thin translation layer.
  */
 public interface RadioSensorSource {
-    /** Latest LTE signal snapshot, or null when there is none (no SIM, no service, denied). */
-    public fun lteSignal(): LteSignal?
 
-    /** The telephony data network type name ("LTE", "NR", ...), or null when not cellular. */
+    /**
+     * The active link's strength snapshot, or null when there is none (no service, denied).
+     *
+     * "Active" means the network the phone is actually using: on Wi-Fi this is the Wi-Fi
+     * link's RSSI, because the cell's reading would describe a network no data is flowing
+     * through - which is exactly how a SIM-less tablet, or a phone idling on Wi-Fi, ended up
+     * with a screen full of gaps.
+     */
+    public fun linkSignal(): LinkSignal?
+
+    /** The active network type name ("WIFI", "LTE", "WCDMA", ...), or null when unknown. */
     public fun networkType(): String?
 
     /** Compass heading in degrees (0 = north magnetic), or null when no magnetometer. */
     public fun headingDegrees(): Double?
 }
 
-/** One LTE snapshot as the platform reported it. */
-public data class LteSignal(
+/**
+ * One strength snapshot as the platform reported it.
+ *
+ * [rsrpDbm] carries the active link's strength in dBm whatever the technology: RSRP on LTE,
+ * the technology's own dBm reading elsewhere (WCDMA, GSM, NR), and the Wi-Fi RSSI when the
+ * phone is on Wi-Fi. The narrower columns ([rsrqDb], [rssnrDb], [timingAdvance]) stay LTE-only
+ * and are null on every other link, because inventing their equivalents would dress one
+ * technology's numbers in another's names.
+ */
+public data class LinkSignal(
     public val rsrpDbm: Int?,
     public val rsrqDb: Int?,
     public val rssnrDb: Int?,
@@ -95,7 +111,7 @@ public class RadioTimelineSampler(
         val transport = source.networkType()
         val transition = transitionTag(previousTransport, transport)
         previousTransport = transport
-        val signal = source.lteSignal()
+        val signal = source.linkSignal()
         return RadioSample(
             epochMillis = clock(),
             networkType = transport,
@@ -148,12 +164,15 @@ public class DeviceRadioSensorSource(private val context: Context) : RadioSensor
     private val telephony = context.getSystemService(TelephonyManager::class.java)
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
 
-    private var lastSignal: LteSignal? = null
+    // Written by the platform's signal callback on the main executor and read by the sampler on
+    // whatever thread it was given; volatile so a sample never reads a half-published reading.
+    @Volatile
+    private var lastSignal: LinkSignal? = null
 
     private val signalCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        SignalCallback31 { strength -> lastSignal = strength.toLte() }
+        SignalCallback31 { strength -> lastSignal = strength.toActiveLink() }
     } else {
-        LegacySignalCallback { strength -> lastSignal = strength.toLte() }
+        LegacySignalCallback { strength -> lastSignal = strength.toActiveLink() }
     }
 
     /** Registers listeners; returns false when the platform refuses (no SIM, denied). */
@@ -182,12 +201,60 @@ public class DeviceRadioSensorSource(private val context: Context) : RadioSensor
         }
     }
 
-    override fun lteSignal(): LteSignal? {
+    override fun linkSignal(): LinkSignal? {
+        // The active network decides what "signal" even means here: a Wi-Fi phone's cell
+        // reading would describe a link nothing is using, so it is not a fallback, it is a
+        // different network's answer.
+        if (isWifi()) {
+            return wifiSignal()
+        }
         // The callback may not have fired yet; poll once so the first sample is not empty.
         if (lastSignal == null) {
-            lastSignal = readAllCellInfoLte()
+            lastSignal = readAllCellInfoStrength()
         }
         return lastSignal
+    }
+
+    /** True when the network data is flowing over right now is Wi-Fi. */
+    private fun isWifi(): Boolean = runCatching {
+        val network = connectivity.activeNetwork ?: return@runCatching false
+        connectivity.getNetworkCapabilities(network)
+            ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+    }.getOrDefault(false)
+
+    /**
+     * The Wi-Fi link's strength: RSSI in dBm and the platform's 0..4 level.
+     *
+     * Nulls are honest per column - a right-to-left read of a router's signal is still a
+     * reading; "unknown" in a column the platform did not report is not.
+     */
+    private fun wifiSignal(): LinkSignal? = runCatching {
+        val network = connectivity.activeNetwork ?: return@runCatching null
+        val rssi = connectivity
+            .getNetworkCapabilities(network)
+            ?.takeIf { it.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) }
+            ?.signalStrength
+            ?: return@runCatching null
+        // The capabilities RSSI is signed dBm already (e.g. -52); anything at the 0..4 scale
+        // the older WifiManager path produced would be a level, not a dBm, and is refused.
+        if (rssi > 0) return@runCatching null
+        LinkSignal(
+            rsrpDbm = rssi,
+            rsrqDb = null,
+            rssnrDb = null,
+            rssiDbm = null,
+            timingAdvance = null,
+            level = wifiLevelOf(rssi),
+        )
+    }.getOrNull()
+
+    /** The Wi-Fi scale in plain terms: above -50 is excellent, below -85 is the edge. */
+    private fun wifiLevelOf(rssi: Int): Int? = when {
+        rssi >= -55 -> 4
+        rssi >= -67 -> 3
+        rssi >= -75 -> 2
+        rssi >= -85 -> 1
+        else -> 0
     }
 
     override fun networkType(): String? {
@@ -224,17 +291,27 @@ public class DeviceRadioSensorSource(private val context: Context) : RadioSensor
         }
     }.getOrNull()
 
-    /** Reads the primary LTE strength from getAllCellInfo, the API the probe already proved. */
-    private fun readAllCellInfoLte(): LteSignal? = runCatching {
-        telephony.allCellInfo
-            ?.asSequence()
-            ?.mapNotNull { it as? android.telephony.CellInfoLte }
-            ?.map { it.cellSignalStrength.toLte() }
-            ?.firstOrNull()
+    /**
+     * The pre-first-callback reading.
+     *
+     * LTE comes from getAllCellInfo because that is where its five columns live. The
+     * any-technology fallback reads the primary [SignalStrength] instead of parsing more
+     * CellInfo subclasses: their per-technology classes do not all exist at minSdk 26, and a
+     * class literal for one that does not loads no class and answers nothing on an older phone.
+     */
+    private fun readAllCellInfoStrength(): LinkSignal? = runCatching {
+        val infos = telephony.allCellInfo ?: return@runCatching null
+        infos.filterIsInstance<android.telephony.CellInfoLte>()
+            .firstOrNull()
+            ?.let { it.cellSignalStrength.toLte() }
     }.getOrNull()
+        ?: runCatching {
+            @Suppress("DEPRECATION")
+            telephony.signalStrength?.toActiveLink()
+        }.getOrNull()
 
-    private fun CellSignalStrengthLte.toLte(): LteSignal = runCatching {
-        LteSignal(
+    private fun CellSignalStrengthLte.toLte(): LinkSignal = runCatching {
+        LinkSignal(
             rsrpDbm = runCatching { rsrp }.getOrNull()?.takeIf { it != UNAVAILABLE },
             rsrqDb = runCatching { rsrq }.getOrNull()?.takeIf { it != UNAVAILABLE },
             rssnrDb = runCatching { rssnr }.getOrNull()?.takeIf { it != UNAVAILABLE },
@@ -242,7 +319,7 @@ public class DeviceRadioSensorSource(private val context: Context) : RadioSensor
             timingAdvance = runCatching { timingAdvance }.getOrNull()?.takeIf { it != UNAVAILABLE },
             level = runCatching { level }.getOrNull()?.takeIf { it in 0..4 },
         )
-    }.getOrDefault(LteSignal(null, null, null, null, null, null))
+    }.getOrDefault(LinkSignal(null, null, null, null, null, null))
 
     private companion object {
         /** android.telephony.SignalStrength#SIGNAL_STRENGTH_UNKNOWN-equivalent sentinel. */
@@ -265,19 +342,39 @@ private class LegacySignalCallback(
     override fun onSignalStrengthsChanged(signalStrength: SignalStrength) = onStrength(signalStrength)
 }
 
-/** Extracts the LTE component of a platform SignalStrength without version traps. */
-private fun SignalStrength.toLte(): LteSignal? = runCatching {
-    @Suppress("DEPRECATION")
-    val lte = cellSignalStrengths
-        .filterIsInstance<CellSignalStrengthLte>()
-        .firstOrNull() ?: return null
-    LteSignal(
-        rsrpDbm = runCatching { lte.rsrp }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
-        rsrqDb = runCatching { lte.rsrq }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
-        rssnrDb = runCatching { lte.rssnr }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
-        rssiDbm = runCatching { lte.rssi }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
-        timingAdvance = runCatching { lte.timingAdvance }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
-        level = runCatching { lte.level }.getOrNull()?.takeIf { it in 0..4 },
+/**
+ * The primary technology's reading from a platform SignalStrength, without version traps.
+ *
+ * Every entry of `cellSignalStrengths` speaks the same three numbers at minSdk - level, dBm
+ * and, on LTE, the wider columns - so the read dispatches on nothing: the first entry carrying
+ * a real reading wins, and its dBm lands in [LinkSignal.rsrpDbm]. Naming the per-technology
+ * subclasses (WCDMA, NR, TD-SCDMA) would reference classes above minSdk and throw on the
+ * phones they were meant to include. The dBm column means "the active link's strength in dBm",
+ * which is what every consumer of a sample already reads.
+ */
+private fun SignalStrength.toActiveLink(): LinkSignal? = runCatching {
+    val entry = cellSignalStrengths.firstOrNull { strength ->
+        val level = runCatching { strength.level }.getOrNull()
+        val dbm = runCatching { strength.dbm }.getOrNull()
+        (level != null && level in 0..4) || (dbm != null && dbm != Int.MAX_VALUE)
+    } ?: return@runCatching null
+    val isLte = entry is CellSignalStrengthLte
+    LinkSignal(
+        rsrpDbm = runCatching { entry.dbm }.getOrNull()?.takeIf { it != Int.MAX_VALUE },
+        rsrqDb = if (isLte) {
+            runCatching { (entry as CellSignalStrengthLte).rsrq }.getOrNull()?.takeIf { it != Int.MAX_VALUE }
+        } else null,
+        rssnrDb = if (isLte) {
+            runCatching { (entry as CellSignalStrengthLte).rssnr }.getOrNull()?.takeIf { it != Int.MAX_VALUE }
+        } else null,
+        rssiDbm = if (isLte) {
+            runCatching { (entry as CellSignalStrengthLte).rssi }.getOrNull()?.takeIf { it != Int.MAX_VALUE }
+        } else null,
+        timingAdvance = if (isLte) {
+            runCatching { (entry as CellSignalStrengthLte).timingAdvance }.getOrNull()
+                ?.takeIf { it != Int.MAX_VALUE }
+        } else null,
+        level = runCatching { entry.level }.getOrNull()?.takeIf { it in 0..4 },
     )
 }.getOrNull()
 
