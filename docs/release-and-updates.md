@@ -69,15 +69,20 @@ pull request can still build and test everything; only publishing needs the key.
 
 ## Where the download actually is
 
-Published 3 October 2026: **`v0.3.0-B3`**, version code 3, `extranet-0.3.0-B3.apk` (11,698,056
-bytes) with a `.sha256` beside it. The link to hand people is the release index,
+Published 3 October 2026: **`v0.3.0-B3`** (version code 3) and then **`v0.3.1-B4`** (version code
+4), each an `extranet-<version>.apk` with a `.sha256` beside it. The link to hand people is the
+release index,
 
 <https://github.com/rijing240/extranet-netdiag/releases>
 
 and it stays correct as new versions are published — there is no URL to update anywhere.
 
-Two things about it are easy to trip over:
+Three things about it are easy to trip over.
 
+- **The repository has to be public.** GitHub answers `404` to an unauthenticated request for a
+  private repository — deliberately, so its name and contents are not discoverable — and the app
+  reports that as "this app's release list was not found", which reads like a typo in the URL. It
+  was exactly this: the first published release was invisible to every phone but the author's.
 - **`/releases/latest` is empty on purpose.** GitHub resolves "latest" to the newest release that
   is *not* a pre-release, and every build so far carries a `-B3`-style suffix, so they are all
   marked as test builds. The index page above lists them anyway; the app's own check lists them
