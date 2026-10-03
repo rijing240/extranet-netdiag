@@ -112,8 +112,38 @@ versions with a proper comparison rather than string order, so `0.10.0` beats `0
 What leaves the phone: a `GET` to
 `https://api.github.com/repos/rijing240/extranet-netdiag/releases?per_page=20`. No identifier, no
 version, no device data, no cookie, no account. GitHub learns that an address asked a question,
-exactly as it would from a browser. And nothing is sent at all unless someone taps the button —
-there is no scheduler, no alarm, no check on launch.
+exactly as it would from a browser. And the update check itself is only ever made when someone
+taps the button — there is no scheduler, no alarm, and it is never asked on its own.
+
+## Retiring a build
+
+The update notice tells somebody a newer build exists. Retiring a build is the other half — telling
+them the one they are holding must stop working — and it is the part Android gives no app any way
+to do for itself. No app can close another, `adb` needs a cable, and there is no Play Console to
+halt a sideloaded build. So the lever the app offers is a file, and it is read exactly once:
+
+```
+https://raw.githubusercontent.com/rijing240/extranet-netdiag/main/withdrawal-switch.txt
+```
+
+[`WithdrawalSwitch`](../measure/src/main/kotlin/dev/extranet/netdiag/measure/Withdrawal.kt) reads
+it, and only the exact word `off` on the first line retires the build; `message` and `url` lines
+say why and where the current build is. Everything else runs the app. **Every failure runs the
+app** — no network, a timeout, a `404`, a captive portal answering instead of the file, a typo —
+because a switch that could brick an app on a bad connection would strand whoever was using it,
+with no way to tell why. The honest limit of that: the switch can retire a version, and it cannot
+enforce anything against a phone that is offline.
+
+So this does add the app's one request that nobody asked for, which the rest of this document used
+to say did not exist. It is bounded on purpose: once per launch, never on resume, never retried,
+four seconds of timeout, 8 KB ceiling, and the app is drawn and usable while the answer is on its
+way — the notice only ever *replaces* the screens, it never covers them. What it sends is the URL
+and nothing else: no identifier, no version, no cookie, no account. A withdrawn copy is told which
+build it is refusing to run, that nothing on the phone was changed, that no measurement was
+uploaded, and where to get the current build.
+
+The other lever, which costs no privacy at all, is to publish a version that declines to run. It
+takes effect only for people who update, which is usually the point.
 
 ## The gate we are deliberately not building
 

@@ -114,8 +114,13 @@ public fun UpdatesRoute(onDismiss: () -> Unit) {
     )
 }
 
-/** Hand a release page to whatever the user browses with. */
-private fun openInBrowser(context: Context, url: String) {
+/**
+ * Hand a release page to whatever the user browses with.
+ *
+ * Shared with the withdrawal screen, which opens the project's current build for the same reason:
+ * the app can put a link in front of a person, and only the person can follow it.
+ */
+internal fun openInBrowser(context: Context, url: String) {
     runCatching {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }

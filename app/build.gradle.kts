@@ -36,8 +36,8 @@ android {
         applicationId = "dev.extranet.netdiag"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.3.1-B4"
+        versionCode = 5
+        versionName = "0.3.2-B5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

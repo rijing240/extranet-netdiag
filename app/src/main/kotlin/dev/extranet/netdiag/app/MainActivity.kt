@@ -104,6 +104,24 @@ private fun NetDiagApp() {
     var current by remember { mutableStateOf(Screen.CAPABILITY) }
     var updatesOpen by remember { mutableStateOf(false) }
 
+    // One question at launch: has the project retired this build? The app is drawn first and the
+    // answer is allowed to replace it - a withdrawn build stops working, and nothing else does.
+    // The check never delays the shell, because an instrument that waits on a network before it
+    // can be used is an instrument nobody trusts on a train.
+    val withdrawalViewModel: WithdrawalViewModel = viewModel()
+    val withdrawalState by withdrawalViewModel.state.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(Unit) { withdrawalViewModel.checkOnce() }
+    val withdrawn = withdrawalState as? WithdrawalUiState.Withdrawn
+    if (withdrawn != null) {
+        val withdrawalContext = LocalContext.current
+        WithdrawnScreen(
+            message = withdrawn.message,
+            url = withdrawn.url,
+            onOpen = { openInBrowser(withdrawalContext, it) },
+        )
+        return
+    }
+
     // The update notice is a dialog over whatever screen is showing, and it is only ever opened
     // by a tap on the info action. Opening it does not check anything: the request waits for the
     // button inside it, because an app that phones home when a sheet is opened is an app that
