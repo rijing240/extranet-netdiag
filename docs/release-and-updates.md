@@ -63,6 +63,31 @@ pull request can still build and test everything; only publishing needs the key.
    Secrets the workflow needs: `RELEASE_KEYSTORE_BASE64` (the `.jks`, base64-encoded),
    `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`, `RELEASE_KEY_PASSWORD`.
 
+   A commit on its own changes nothing for anyone who has the app. Nothing is pushed to users,
+   nothing is announced, and the app never asks: the tag is the whole act of publication, and
+   until a tag exists there is no version to be newer than.
+
+## Where the download actually is
+
+Published 3 October 2026: **`v0.3.0-B3`**, version code 3, `extranet-0.3.0-B3.apk` (11,698,056
+bytes) with a `.sha256` beside it. The link to hand people is the release index,
+
+<https://github.com/rijing240/extranet-netdiag/releases>
+
+and it stays correct as new versions are published — there is no URL to update anywhere.
+
+Two things about it are easy to trip over:
+
+- **`/releases/latest` is empty on purpose.** GitHub resolves "latest" to the newest release that
+  is *not* a pre-release, and every build so far carries a `-B3`-style suffix, so they are all
+  marked as test builds. The index page above lists them anyway; the app's own check lists them
+  too, labelled as test builds rather than hidden. The first version published without a suffix
+  makes `/releases/latest` resolve on its own, and it needs no change here.
+- **The pre-release APK will not install over a debug build.** Android refuses an update signed
+  by a different key. Anyone who sideloaded a debug APK — including on a development phone —
+  must uninstall it first. After that, every published build updates in place, because they all
+  carry the one release key.
+
 ## The in-app update notice
 
 The top bar's info action shows the installed version and a **Check for updates** button. Tapping
