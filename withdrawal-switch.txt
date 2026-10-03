@@ -1,17 +1,4 @@
 # NetDiag withdrawal switch
-#
-# The app reads this file once when it opens, and reads nothing else that happens on its own.
-# The first line decides: `off` retires the build, anything else runs it.
-#
-# on   - the app works. This is the normal state.
-# off  - the app stops at launch and says so, naming the build it is refusing to run.
-#
-# To retire a test build, change the line to `off`, optionally rewrite `message`, commit to the
-# default branch, and every copy that opens afterwards stops. No new APK, no server, no push
-# notification to anybody.
-#
-# The reason it fails open - and it does, always - is that this file cannot be allowed to strand
-# somebody. No network, a timeout, a 404, a login portal answering instead, a typo: the app runs.
-# So it can retire a version, and it cannot enforce anything against a device that is offline.
-
-on
+off
+message This test build has been retired while testing moves to the production build.
+url https://github.com/rijing240/extranet-netdiag/releases
