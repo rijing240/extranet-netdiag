@@ -134,6 +134,13 @@ because a switch that could brick an app on a bad connection would strand whoeve
 with no way to tell why. The honest limit of that: the switch can retire a version, and it cannot
 enforce anything against a phone that is offline.
 
+Neither is instant, and both are worth knowing before relying on it. GitHub's raw host serves
+the file from a cache for a few minutes after a commit, so an app opened immediately can still
+read the old line; and the app asks once when it opens and never again, so a copy already running
+keeps working until its owner closes it and starts it again. Retiring a build is therefore a
+matter of minutes, not seconds — which is right for a version being handed over to a production
+build, and would not be enough for a security emergency.
+
 So this does add the app's one request that nobody asked for, which the rest of this document used
 to say did not exist. It is bounded on purpose: once per launch, never on resume, never retried,
 four seconds of timeout, 8 KB ceiling, and the app is drawn and usable while the answer is on its
